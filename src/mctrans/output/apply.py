@@ -10,13 +10,25 @@ from pathlib import Path
 from ..handlers import all_handlers
 from ..handlers.base import OutputSink
 from ..store import Workspace
-from .options import add_pack_top, get_option, remove_packs, set_option
+from .options import add_pack_top, get_option, place_around, remove_packs, set_option
 from .resourcepack import build_pack_zip, pack_mcmeta
 
+MODE_STANDALONE = "standalone"
+MODE_I18N = "i18nupdate"
+MODES = (MODE_STANDALONE, MODE_I18N)
+
 PACK_FILE = "mctrans-zh_cn.zip"
+FILL_FILE = "mctrans-zh_cn-fill.zip"
+FIX_FILE = "mctrans-zh_cn-fix.zip"
 PACK_ID = f"file/{PACK_FILE}"
 PACK_DESCRIPTION = "mctrans 自动汉化"
-EXCLUDED_ORIGINS = {"mod_builtin"}  # jar 内已自带，无需重复写入
+
+# 每种模式下各资源包收录哪些来源的译文
+PACK_ORIGINS: dict[str, dict[str, frozenset[str]]] = {
+    MODE_STANDALONE: {PACK_FILE: frozenset({"cfpa", "memory", "llm", "human"})},
+    MODE_I18N: {FILL_FILE: frozenset({"memory", "llm"}), FIX_FILE: frozenset({"human"})},
+}
+INSTANCE_EXCLUDED = frozenset({"mod_builtin"})
 
 
 class ApplyError(Exception):
@@ -26,9 +38,9 @@ class ApplyError(Exception):
 @dataclass
 class ApplyReport:
     entries: int
-    pack_files: int
+    mode: str
+    packs: dict[str, int]
     instance_files: list[str]
-    pack_path: Path | None
     dry_run: bool
 
 
@@ -37,6 +49,25 @@ class RestoreReport:
     restored: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Outputs:
+    packs: dict[str, OutputSink]
+    instance: OutputSink
+    entries: int
+
+
+def i18n_pack_id(mc_version: str) -> str:
+    return f"file/Minecraft-Mod-Language-Modpack-Converted-{mc_version}.zip"
+
+
+def resolve_mode(mode: str, has_i18nupdatemod: bool) -> str:
+    if mode == "auto":
+        return MODE_I18N if has_i18nupdatemod else MODE_STANDALONE
+    if mode not in MODES:
+        raise ApplyError(f"未知的输出模式：{mode}（可选：auto、{'、'.join(MODES)}）")
+    return mode
 
 
 def _sha256(data: bytes) -> str:
@@ -51,23 +82,36 @@ def is_applied(root: Path) -> bool:
     return _pointer(Path(root)).exists()
 
 
-def build_outputs(ws: Workspace) -> tuple[OutputSink, int]:
-    sink = OutputSink()
+def build_outputs(ws: Workspace, mode: str) -> Outputs:
+    plan = PACK_ORIGINS[mode]
+    packs = {name: OutputSink() for name in plan}
+    instance = OutputSink()
     count = 0
     for handler in all_handlers():
-        items = [it for it in ws.translated_items(handler.name) if it.origin not in EXCLUDED_ORIGINS]
-        if items:
-            handler.write(items, sink)
-            count += len(items)
-    return sink, count
+        items = ws.translated_items(handler.name)
+        if handler.output == "instance":
+            chosen = [it for it in items if it.origin not in INSTANCE_EXCLUDED]
+            if chosen:
+                handler.write(chosen, instance)
+                count += len(chosen)
+            continue
+        for name, origins in plan.items():
+            chosen = [it for it in items if it.origin in origins]
+            if chosen:
+                handler.write(chosen, packs[name])
+                count += len(chosen)
+    return Outputs({n: s for n, s in packs.items() if s.pack_files}, instance, count)
 
 
-def apply(root: Path, ws: Workspace, mc_version: str, set_lang: bool = False,
-          dry_run: bool = False) -> ApplyReport:
+def apply(root: Path, ws: Workspace, mc_version: str, mode: str = MODE_STANDALONE,
+          set_lang: bool = False, dry_run: bool = False) -> ApplyReport:
     root = Path(root)
-    sink, count = build_outputs(ws)
-    pack_path = root / "resourcepacks" / PACK_FILE if sink.pack_files else None
-    report = ApplyReport(count, len(sink.pack_files), sorted(sink.instance_files), pack_path, dry_run)
+    outputs = build_outputs(ws, mode)
+    report = ApplyReport(
+        entries=outputs.entries, mode=mode,
+        packs={name: len(sink.pack_files) for name, sink in outputs.packs.items()},
+        instance_files=sorted(outputs.instance.instance_files), dry_run=dry_run,
+    )
     if dry_run:
         return report
     if is_applied(root):
@@ -77,7 +121,7 @@ def apply(root: Path, ws: Workspace, mc_version: str, set_lang: bool = False,
     run_dir.mkdir(parents=True)
     manifest: dict = {"created": [], "modified": [], "options": {"packs": [], "lang_set": False, "lang_before": None}}
 
-    for rel, data in sorted(sink.instance_files.items()):
+    for rel, data in sorted(outputs.instance.instance_files.items()):
         target = root / rel
         backup_rel = None
         if target.exists():
@@ -89,16 +133,22 @@ def apply(root: Path, ws: Workspace, mc_version: str, set_lang: bool = False,
         target.write_bytes(data)
         manifest["modified"].append({"path": rel, "backup": backup_rel, "hash": _sha256(data)})
 
-    if pack_path is not None or set_lang:
+    if outputs.packs or set_lang:
         opts = root / "options.txt"
         text = opts.read_bytes().decode("utf-8") if opts.exists() else ""
-        if pack_path is not None:
+        for name, sink in sorted(outputs.packs.items()):
             data = build_pack_zip(sink.pack_files, pack_mcmeta(mc_version, PACK_DESCRIPTION))
-            pack_path.parent.mkdir(parents=True, exist_ok=True)
-            pack_path.write_bytes(data)
-            manifest["created"].append({"path": f"resourcepacks/{PACK_FILE}", "hash": _sha256(data)})
+            path = root / "resourcepacks" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            manifest["created"].append({"path": f"resourcepacks/{name}", "hash": _sha256(data)})
+            manifest["options"]["packs"].append(f"file/{name}")
+        if mode == MODE_STANDALONE and PACK_FILE in outputs.packs:
             text = add_pack_top(text, PACK_ID)
-            manifest["options"]["packs"].append(PACK_ID)
+        elif mode == MODE_I18N and outputs.packs:
+            below = [f"file/{FILL_FILE}"] if FILL_FILE in outputs.packs else []
+            above = [f"file/{FIX_FILE}"] if FIX_FILE in outputs.packs else []
+            text = place_around(text, i18n_pack_id(mc_version), below, above)
         if set_lang:
             manifest["options"]["lang_set"] = True
             manifest["options"]["lang_before"] = get_option(text, "lang")

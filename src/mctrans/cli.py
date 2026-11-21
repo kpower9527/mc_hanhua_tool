@@ -130,9 +130,9 @@ def do_apply(root: Path, set_lang: bool, dry_run: bool) -> None:
     with ws:
         report = apply_outputs(root, ws, ws.get_meta("mc_version"), set_lang=set_lang, dry_run=dry_run)
     prefix = "（预演，未写入）" if dry_run else ""
-    console.print(f"{prefix}写入译文 {report.entries} 条，资源包内文件 {report.pack_files} 个")
-    if report.pack_path:
-        console.print(f"资源包：{report.pack_path}")
+    console.print(f"{prefix}写入译文 {report.entries} 条")
+    for name, n in report.packs.items():
+        console.print(f"资源包：resourcepacks/{name}（{n} 个文件）")
     for rel in report.instance_files:
         console.print(f"修改文件：{rel}")
     if not dry_run:

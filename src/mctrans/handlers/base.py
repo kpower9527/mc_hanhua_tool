@@ -24,6 +24,7 @@ class OutputSink:
 class Handler(ABC):
     name: str = ""
     kind_label: str = ""
+    output: str = "pack"  # "pack"：写入资源包；"instance"：直接修改实例内文件
 
     def __init__(self) -> None:
         self.warnings: list[str] = []

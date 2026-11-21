@@ -34,3 +34,21 @@ def test_remove_packs():
     assert read_packs(out) == ["vanilla", "file/other.zip"]
     assert get_option(out, "incompatibleResourcePacks") == "[]"
     assert remove_packs("lang:en_us\n", ["file/x.zip"]) == "lang:en_us\n"
+
+
+from mctrans.output.options import place_around
+
+ANCHOR = "file/Minecraft-Mod-Language-Modpack-Converted-1.20.1.zip"
+
+
+def test_place_around_adds_anchor():
+    out = place_around('resourcePacks:["vanilla"]\n', ANCHOR, ["file/fill.zip"], ["file/fix.zip"])
+    assert read_packs(out) == ["vanilla", "file/fill.zip", ANCHOR, "file/fix.zip"]
+
+
+def test_place_around_existing_anchor_keeps_others():
+    text = f'resourcePacks:["vanilla","file/fill.zip","{ANCHOR}","file/other.zip"]\n'
+    out = place_around(text, ANCHOR, ["file/fill.zip"], [])
+    assert read_packs(out) == ["vanilla", "file/fill.zip", ANCHOR, "file/other.zip"]
+    out = place_around(text, ANCHOR, [], ["file/fix.zip"])
+    assert read_packs(out) == ["vanilla", "file/fill.zip", ANCHOR, "file/fix.zip", "file/other.zip"]

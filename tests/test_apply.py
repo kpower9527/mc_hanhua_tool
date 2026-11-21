@@ -7,7 +7,9 @@ import pytest
 from mctrans.handlers.base import Handler
 from mctrans.models import Entry
 from mctrans.output import apply as apply_mod
-from mctrans.output.apply import PACK_ID, ApplyError, apply, is_applied, restore
+from mctrans.output.apply import (
+    FILL_FILE, FIX_FILE, MODE_I18N, PACK_ID, ApplyError, apply, i18n_pack_id, is_applied, resolve_mode, restore,
+)
 from mctrans.output.options import get_option, read_packs
 from mctrans.store import TranslationUpdate, Workspace
 
@@ -36,7 +38,7 @@ def read_zip(path):
 def test_apply_creates_pack_and_enables_it(instance_dir, ws):
     (instance_dir / "options.txt").write_bytes(b'version:3465\r\nresourcePacks:["vanilla"]\r\nlang:en_us\r\n')
     report = apply(instance_dir, ws, "1.20.1", set_lang=True)
-    assert report.entries == 1 and report.pack_files == 1
+    assert report.entries == 1 and report.packs == {"mctrans-zh_cn.zip": 1} and report.mode == "standalone"
     files = read_zip(instance_dir / "resourcepacks" / "mctrans-zh_cn.zip")
     assert json.loads(files["assets/a/lang/zh_cn.json"]) == {"k2": "传动杆"}  # 不含 mod 自带的 k1
     assert json.loads(files["pack.mcmeta"])["pack"]["pack_format"] == 15
@@ -99,6 +101,7 @@ class FileHandler(Handler):
     """测试用：把译文直接写进实例内文件，模拟任务书类处理器。"""
     name = "lang_json"
     kind_label = "x"
+    output = "instance"
 
     def detect(self, instance):
         return True
@@ -124,3 +127,60 @@ def test_instance_files_backup_and_restore(instance_dir, ws, monkeypatch):
     assert not (instance_dir / "config" / "new.txt").exists()
     assert sorted(result.restored) == ["config/quests.txt"]
     assert sorted(result.removed) == ["config/new.txt"]
+
+
+def test_resolve_mode():
+    assert resolve_mode("auto", True) == "i18nupdate"
+    assert resolve_mode("auto", False) == "standalone"
+    assert resolve_mode("standalone", True) == "standalone"
+    with pytest.raises(ApplyError):
+        resolve_mode("bogus", False)
+
+
+@pytest.fixture
+def mixed_ws(instance_dir):
+    w = Workspace.for_instance(instance_dir)
+    w.sync_entries("lang_json", [
+        e("k.builtin", "Gear", zh="齿轮"), e("k.cfpa", "Shaft"), e("k.llm", "Belt"),
+        e("k.mem", "Cog"), e("k.human", "Casing"),
+    ])
+    w.apply_builtin()
+    ids = {p.locator: p.id for p in w.pending_entries()}
+    w.save_translations([
+        TranslationUpdate(ids["k.cfpa"], "传动杆", "cfpa", "done"),
+        TranslationUpdate(ids["k.llm"], "传送带", "llm", "done", "m"),
+        TranslationUpdate(ids["k.mem"], "嵌齿", "memory", "done"),
+        TranslationUpdate(ids["k.human"], "机壳", "human", "confirmed"),
+    ])
+    yield w
+    w.close()
+
+
+def test_standalone_includes_cfpa(instance_dir, mixed_ws):
+    apply(instance_dir, mixed_ws, "1.20.1")
+    files = read_zip(instance_dir / "resourcepacks" / "mctrans-zh_cn.zip")
+    assert set(json.loads(files["assets/a/lang/zh_cn.json"])) == {"k.cfpa", "k.llm", "k.mem", "k.human"}
+
+
+def test_i18n_mode_splits_packs_and_orders_them(instance_dir, mixed_ws):
+    (instance_dir / "options.txt").write_text('resourcePacks:["vanilla","file/other.zip"]\n', encoding="utf-8")
+    report = apply(instance_dir, mixed_ws, "1.20.1", mode=MODE_I18N)
+    assert report.mode == "i18nupdate" and report.packs == {FILL_FILE: 1, FIX_FILE: 1}
+    fill = read_zip(instance_dir / "resourcepacks" / FILL_FILE)
+    fix = read_zip(instance_dir / "resourcepacks" / FIX_FILE)
+    assert set(json.loads(fill["assets/a/lang/zh_cn.json"])) == {"k.llm", "k.mem"}
+    assert set(json.loads(fix["assets/a/lang/zh_cn.json"])) == {"k.human"}
+    assert not (instance_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    packs = read_packs((instance_dir / "options.txt").read_text(encoding="utf-8"))
+    assert packs == ["vanilla", "file/other.zip", f"file/{FILL_FILE}", i18n_pack_id("1.20.1"), f"file/{FIX_FILE}"]
+    restore(instance_dir)
+    packs = read_packs((instance_dir / "options.txt").read_text(encoding="utf-8"))
+    assert packs == ["vanilla", "file/other.zip", i18n_pack_id("1.20.1")]
+    assert not (instance_dir / "resourcepacks" / FILL_FILE).exists()
+
+
+def test_i18n_mode_without_human_has_no_fix_pack(instance_dir, ws):
+    report = apply(instance_dir, ws, "1.20.1", mode=MODE_I18N)
+    assert report.packs == {FILL_FILE: 1}
+    packs = read_packs((instance_dir / "options.txt").read_text(encoding="utf-8"))
+    assert packs == ["vanilla", f"file/{FILL_FILE}", i18n_pack_id("1.20.1")]
