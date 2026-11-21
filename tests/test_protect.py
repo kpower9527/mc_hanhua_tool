@@ -44,3 +44,10 @@ def test_has_translatable_text():
     assert has_translatable_text(protect("§a%s").text) is False
     assert has_translatable_text(protect("123 / 456").text) is False
     assert has_translatable_text(protect("§aHello").text) is True
+
+
+def test_ftb_style_tokens():
+    assert protect("The &6Plough&r is &aGreen&r.").tokens == ["&6", "&r", "&a", "&r"]
+    assert protect("{@pagebreak}").tokens == ["{@pagebreak}"]
+    assert protect("See {image:atm:textures/a.png width:50}").tokens == ["{image:atm:textures/a.png width:50}"]
+    assert protect("Rock&roll &amp").tokens == []

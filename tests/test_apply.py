@@ -184,3 +184,29 @@ def test_i18n_mode_without_human_has_no_fix_pack(instance_dir, ws):
     assert report.packs == {FILL_FILE: 1}
     packs = read_packs((instance_dir / "options.txt").read_text(encoding="utf-8"))
     assert packs == ["vanilla", f"file/{FILL_FILE}", i18n_pack_id("1.20.1")]
+
+
+class WholeFileHandler(Handler):
+    """测试用：整文件处理器，记录收到的条目与 sink 的 root。"""
+    name = "lang_json"
+    kind_label = "x"
+    whole_file = True
+    seen: list = []
+
+    def detect(self, instance):
+        return True
+
+    def extract(self, instance):
+        return iter(())
+
+    def write(self, items, sink):
+        WholeFileHandler.seen.append((sorted(i.entry.locator for i in items), sink.root))
+        sink.add_pack_file("assets/a/whole.json", b"{}")
+
+
+def test_whole_file_handler_goes_to_fill_pack(instance_dir, mixed_ws, monkeypatch):
+    monkeypatch.setattr(apply_mod, "all_handlers", lambda: [WholeFileHandler()])
+    WholeFileHandler.seen = []
+    report = apply(instance_dir, mixed_ws, "1.20.1", mode=MODE_I18N)
+    assert report.packs == {FILL_FILE: 1}
+    assert WholeFileHandler.seen == [(["k.cfpa", "k.human", "k.llm", "k.mem"], instance_dir)]

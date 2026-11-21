@@ -9,9 +9,9 @@ TOKEN_RE = re.compile(r"⟦(\d+)⟧")
 
 PROTECT_RE = re.compile("|".join([
     r"§[0-9a-fk-orA-FK-OR]",                       # 颜色/样式码
-    r"(?<![A-Za-z0-9])&[0-9a-fk-or]",              # & 颜色码（前面不能紧跟字母数字）
+    r"&[0-9a-fk-or](?![a-z])",                     # & 颜色码（后面紧跟小写字母时视为普通文字，如 Rock&roll）
     r"%(?:\d+\$)?[-#+0,(]*\d*(?:\.\d+)?[a-zA-Z%]", # printf 参数
-    r"\{[A-Za-z0-9_.:-]*\}",                       # {0} {player}
+    r"\{[^{}\n]*\}",                               # {0} {player} {@pagebreak} {image:...}
     r"\$\([^)]*\)",                                # Patchouli 宏
     r"\n",                                        # 字面量 \n
     r"\n",                                         # 真实换行

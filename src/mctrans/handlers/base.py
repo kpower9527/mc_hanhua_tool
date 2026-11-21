@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Iterator
 
 from ..instance import Instance
@@ -10,7 +11,8 @@ from ..models import Entry, TranslatedItem
 class OutputSink:
     """收集处理器写出的文件：资源包内的文件和实例目录内的文件。"""
 
-    def __init__(self) -> None:
+    def __init__(self, root: Path | None = None) -> None:
+        self.root = root
         self.pack_files: dict[str, bytes] = {}
         self.instance_files: dict[str, bytes] = {}
 
@@ -25,6 +27,7 @@ class Handler(ABC):
     name: str = ""
     kind_label: str = ""
     output: str = "pack"  # "pack"：写入资源包；"instance"：直接修改实例内文件
+    whole_file: bool = False  # True：输出整文件，同一文件的译文不能拆到不同资源包
 
     def __init__(self) -> None:
         self.warnings: list[str] = []

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from ..applied import pointer_path
 from ..handlers import all_handlers
 from ..handlers.base import OutputSink
 from ..store import Workspace
@@ -29,6 +30,8 @@ PACK_ORIGINS: dict[str, dict[str, frozenset[str]]] = {
     MODE_I18N: {FILL_FILE: frozenset({"memory", "llm"}), FIX_FILE: frozenset({"human"})},
 }
 INSTANCE_EXCLUDED = frozenset({"mod_builtin"})
+# 整文件处理器的输出位置（配合模式下放在 CFPA 包之下，CFPA 有同名文件时以 CFPA 为准）
+WHOLE_FILE_PACK = {MODE_STANDALONE: PACK_FILE, MODE_I18N: FILL_FILE}
 
 
 class ApplyError(Exception):
@@ -74,25 +77,22 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _pointer(root: Path) -> Path:
-    return root / ".mctrans" / "applied.json"
-
-
 def is_applied(root: Path) -> bool:
-    return _pointer(Path(root)).exists()
+    return pointer_path(Path(root)).exists()
 
 
-def build_outputs(ws: Workspace, mode: str) -> Outputs:
+def build_outputs(ws: Workspace, mode: str, root: Path | None = None) -> Outputs:
     plan = PACK_ORIGINS[mode]
-    packs = {name: OutputSink() for name in plan}
-    instance = OutputSink()
+    packs = {name: OutputSink(root) for name in plan}
+    instance = OutputSink(root)
     count = 0
     for handler in all_handlers():
         items = ws.translated_items(handler.name)
-        if handler.output == "instance":
+        if handler.output == "instance" or handler.whole_file:
             chosen = [it for it in items if it.origin not in INSTANCE_EXCLUDED]
             if chosen:
-                handler.write(chosen, instance)
+                target = instance if handler.output == "instance" else packs[WHOLE_FILE_PACK[mode]]
+                handler.write(chosen, target)
                 count += len(chosen)
             continue
         for name, origins in plan.items():
@@ -106,7 +106,7 @@ def build_outputs(ws: Workspace, mode: str) -> Outputs:
 def apply(root: Path, ws: Workspace, mc_version: str, mode: str = MODE_STANDALONE,
           set_lang: bool = False, dry_run: bool = False) -> ApplyReport:
     root = Path(root)
-    outputs = build_outputs(ws, mode)
+    outputs = build_outputs(ws, mode, root)
     report = ApplyReport(
         entries=outputs.entries, mode=mode,
         packs={name: len(sink.pack_files) for name, sink in outputs.packs.items()},
@@ -157,7 +157,7 @@ def apply(root: Path, ws: Workspace, mc_version: str, mode: str = MODE_STANDALON
 
     manifest_path = run_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    _pointer(root).write_text(
+    pointer_path(root).write_text(
         json.dumps({"manifest": manifest_path.relative_to(root).as_posix()}), encoding="utf-8"
     )
     return report
@@ -165,7 +165,7 @@ def apply(root: Path, ws: Workspace, mc_version: str, mode: str = MODE_STANDALON
 
 def restore(root: Path) -> RestoreReport:
     root = Path(root)
-    pointer = _pointer(root)
+    pointer = pointer_path(root)
     if not pointer.exists():
         raise ApplyError("没有找到已应用的汉化记录，无需还原")
     manifest = json.loads((root / json.loads(pointer.read_text(encoding="utf-8"))["manifest"]).read_text(encoding="utf-8"))
