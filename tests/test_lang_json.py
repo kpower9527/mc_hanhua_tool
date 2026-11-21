@@ -112,3 +112,39 @@ def test_write_groups_by_namespace():
     assert json.loads(sink.pack_files["assets/a/lang/zh_cn.json"].decode("utf-8")) == {"k1": "一", "k3": "三"}
     assert "一" in sink.pack_files["assets/a/lang/zh_cn.json"].decode("utf-8")  # 不转义中文
     assert sink.instance_files == {}
+
+
+from mctrans.handlers.lang_json import dump_lang_legacy, parse_lang_legacy
+
+
+def test_parse_lang_legacy():
+    data = "\ufeff#PARSE_ESCAPES\n# comment\nitem.a.name=Gear\n\ntile.b.name=Shaft = long\nbad line\ntip.c=Line1\\nLine2\n".encode("utf-8")
+    assert parse_lang_legacy(data) == {"item.a.name": "Gear", "tile.b.name": "Shaft = long", "tip.c": "Line1\\nLine2"}
+
+
+def test_dump_lang_legacy():
+    assert dump_lang_legacy({"a": "齿轮", "b": "轴"}) == "a=齿轮\nb=轴\n".encode("utf-8")
+    assert dump_lang_legacy({"a": "第一行\\n第二行"}).startswith(b"#PARSE_ESCAPES\n")
+
+
+def test_extract_and_write_legacy_lang(tmp_path):
+    root = tmp_path / "old"
+    (root / "mods").mkdir(parents=True)
+    make_jar(root / "mods" / "old.jar", {
+        "assets/oldmod/lang/en_US.lang": "item.gear.name=Gear\ntip.x=Hold %s\n",
+        "assets/oldmod/lang/zh_CN.lang": "item.gear.name=齿轮\n",
+        "assets/both/lang/en_us.lang": "k=From lang\n",
+        "assets/both/lang/en_us.json": lang({"k": "From json"}),
+    })
+    inst = load_instance(root, mc_version="1.12.2")
+    entries = list(LangJsonHandler().extract(inst))
+    got = sorted((x.source, x.locator, x.original, x.existing_zh) for x in entries)
+    assert got == [
+        ("jar:assets/both/lang/en_us.json", "k", "From json", None),
+        ("jar:assets/oldmod/lang/en_us.lang", "item.gear.name", "Gear", "齿轮"),
+        ("jar:assets/oldmod/lang/en_us.lang", "tip.x", "Hold %s", None),
+    ]
+    sink = OutputSink()
+    legacy = next(x for x in entries if x.locator == "tip.x")
+    LangJsonHandler().write([TranslatedItem(legacy, "按住 %s", "llm", "done")], sink)
+    assert sink.pack_files == {"assets/oldmod/lang/zh_cn.lang": "tip.x=按住 %s\n".encode("utf-8")}

@@ -33,6 +33,10 @@ def _asset(line: str, fabric: bool) -> CfpaAsset:
 def cfpa_assets(mc_version: str, loader: str) -> list[CfpaAsset]:
     v = parse_version(mc_version)[:2]
     chosen: tuple[str, bool] | None = None
+    if (1, 12) <= v < (1, 13):
+        return [CfpaAsset("1.12.2", "Minecraft-Mod-Language-Modpack.zip", "1.12.2.md5")]
+    if v < (1, 16):
+        return []
     for min_version, line, has_fabric in CFPA_LINES:
         if v >= min_version:
             chosen = (line, has_fabric)

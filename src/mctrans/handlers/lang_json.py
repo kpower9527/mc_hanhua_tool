@@ -11,7 +11,7 @@ from ..instance import Instance
 from ..models import Entry, TranslatedItem
 from .base import Handler, OutputSink
 
-LANG_RE = re.compile(r"^assets/([^/]+)/lang/([A-Za-z_]+)\.json$")
+LANG_RE = re.compile(r"^assets/([^/]+)/lang/([A-Za-z_]+)\.(json|lang)$", re.IGNORECASE)
 NESTED_JAR_RE = re.compile(r"^META-INF/(?:jars|jarjar)/[^/]+\.jar$")
 MAX_NESTING = 2
 
@@ -27,6 +27,28 @@ def parse_lang(data: bytes) -> dict[str, str]:
     if not isinstance(obj, dict):
         raise ValueError("语言文件顶层不是 JSON 对象")
     return {k: v for k, v in obj.items() if isinstance(k, str) and isinstance(v, str)}
+
+
+def parse_lang_legacy(data: bytes) -> dict[str, str]:
+    """1.12 及更早的 .lang 格式：key=value，# 开头为注释，值按原样保留。"""
+    out: dict[str, str] = {}
+    for line in data.decode("utf-8-sig", errors="replace").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip():
+            out[key.strip()] = value
+    return out
+
+
+def dump_lang_legacy(mapping: dict[str, str]) -> bytes:
+    lines = ["#PARSE_ESCAPES"] if any("\\" in v for v in mapping.values()) else []
+    lines += [f"{k}={v}" for k, v in mapping.items()]
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def parse_any(data: bytes, ext: str) -> dict[str, str]:
+    return parse_lang_legacy(data) if ext.lower() == "lang" else parse_lang(data)
 
 
 class LangJsonHandler(Handler):
@@ -70,19 +92,20 @@ class LangJsonHandler(Handler):
             return
         with z:
             names = z.namelist()
-            langs: dict[str, dict[str, str]] = {}
+            langs: dict[str, dict[tuple[str, str], str]] = {}
             for name in names:
                 m = LANG_RE.match(name)
                 if m:
-                    langs.setdefault(m.group(1), {})[m.group(2).lower()] = name
+                    langs.setdefault(m.group(1), {})[(m.group(2).lower(), m.group(3).lower())] = name
             for ns, files in sorted(langs.items()):
-                en = files.get("en_us")
+                ext = "json" if ("en_us", "json") in files else "lang"
+                en = files.get(("en_us", ext))
                 if en is None:
                     continue
-                zh = files.get("zh_cn")
+                zh = files.get(("zh_cn", ext))
                 yield from self._entries(
-                    f"jar:assets/{ns}/lang/en_us.json", ns, z.read(en),
-                    z.read(zh) if zh else None, seen, f"{label}!{en}",
+                    f"jar:assets/{ns}/lang/en_us.{ext}", ns, z.read(en),
+                    z.read(zh) if zh else None, seen, f"{label}!{en}", ext,
                 )
             if depth < MAX_NESTING:
                 for name in names:
@@ -90,16 +113,16 @@ class LangJsonHandler(Handler):
                         yield from self._from_jar(z.read(name), f"{label}!{name}", depth + 1, seen)
 
     def _entries(self, source: str, ns: str, en_data: bytes, zh_data: bytes | None,
-                 seen: set, label: str) -> Iterator[Entry]:
+                 seen: set, label: str, ext: str = "json") -> Iterator[Entry]:
         try:
-            en = parse_lang(en_data)
+            en = parse_any(en_data, ext)
         except ValueError as exc:
             self.warnings.append(f"语言文件解析失败，已跳过：{label}（{exc}）")
             return
         zh: dict[str, str] = {}
         if zh_data is not None:
             try:
-                zh = parse_lang(zh_data)
+                zh = parse_any(zh_data, ext)
             except ValueError as exc:
                 self.warnings.append(f"自带中文解析失败，已忽略：{label}（{exc}）")
         file_hash = hashlib.sha1(en_data).hexdigest()
@@ -113,9 +136,13 @@ class LangJsonHandler(Handler):
             )
 
     def write(self, items: list[TranslatedItem], sink: OutputSink) -> None:
-        by_ns: dict[str, dict[str, str]] = {}
+        groups: dict[tuple[str, str], dict[str, str]] = {}
         for it in items:
-            by_ns.setdefault(it.entry.namespace, {})[it.entry.locator] = it.text
-        for ns, mapping in sorted(by_ns.items()):
-            data = json.dumps(mapping, ensure_ascii=False, indent=2) + "\n"
-            sink.add_pack_file(f"assets/{ns}/lang/zh_cn.json", data.encode("utf-8"))
+            ext = "lang" if it.entry.source.endswith(".lang") else "json"
+            groups.setdefault((it.entry.namespace, ext), {})[it.entry.locator] = it.text
+        for (ns, ext), mapping in sorted(groups.items()):
+            if ext == "lang":
+                sink.add_pack_file(f"assets/{ns}/lang/zh_cn.lang", dump_lang_legacy(mapping))
+            else:
+                data = json.dumps(mapping, ensure_ascii=False, indent=2) + "\n"
+                sink.add_pack_file(f"assets/{ns}/lang/zh_cn.json", data.encode("utf-8"))

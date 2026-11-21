@@ -48,3 +48,8 @@ def test_index_skips_broken_files():
 def test_index_skips_corrupt_zip():
     idx = CfpaIndex.from_zips([b"not a zip"])
     assert len(idx) == 0 and idx.warnings
+
+
+def test_index_reads_legacy_lang():
+    data = jar_bytes({"assets/old/lang/zh_cn.lang": "#PARSE_ESCAPES\nitem.gear.name=齿轮\n"})
+    assert CfpaIndex.from_zips([data]).lookup("old", "item.gear.name") == "齿轮"

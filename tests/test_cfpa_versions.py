@@ -22,7 +22,8 @@ def keys(mc, loader):
     ("1.19.2", "fabric", ["1.19"]),
     ("1.17.1", "forge", ["1.16", "1.16-fabric"]),
     ("26.1", "fabric", ["26.1-fabric", "26.1"]),
-    ("1.12.2", "forge", []),
+    ("1.12.2", "forge", ["1.12.2"]),
+    ("1.14.4", "forge", []),
 ])
 def test_cfpa_assets_selection(mc, loader, expected):
     assert keys(mc, loader) == expected
@@ -35,3 +36,8 @@ def test_asset_file_names():
     assert fabric.zip_name == "Minecraft-Mod-Language-Modpack-1-20-Fabric.zip"
     assert fabric.md5_name == "1.20-fabric.md5"
     assert cfpa_assets("26.1", "forge")[0].zip_name == "Minecraft-Mod-Language-Modpack-26-1.zip"
+
+
+def test_legacy_asset_names():
+    (asset,) = cfpa_assets("1.12.2", "forge")
+    assert (asset.zip_name, asset.md5_name) == ("Minecraft-Mod-Language-Modpack.zip", "1.12.2.md5")

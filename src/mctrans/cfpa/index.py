@@ -5,9 +5,9 @@ import re
 import zipfile
 from collections import Counter
 
-from ..handlers.lang_json import parse_lang
+from ..handlers.lang_json import parse_any
 
-ZH_LANG_RE = re.compile(r"^assets/([^/]+)/lang/zh_cn\.json$", re.IGNORECASE)
+ZH_LANG_RE = re.compile(r"^assets/([^/]+)/lang/zh_cn\.(json|lang)$", re.IGNORECASE)
 PRINTF_RE = re.compile(r"%(?:\d+\$)?[-#+0,(]*\d*(?:\.\d+)?([a-zA-Z])")
 BRACE_RE = re.compile(r"\{[A-Za-z0-9_.:-]*\}")
 
@@ -47,7 +47,7 @@ class CfpaIndex:
                 if not m:
                     continue
                 try:
-                    entries = parse_lang(z.read(name))
+                    entries = parse_any(z.read(name), m.group(2))
                 except ValueError as exc:
                     self.warnings.append(f"CFPA 语言文件解析失败，已跳过：{name}（{exc}）")
                     continue
