@@ -18,12 +18,16 @@ from .instance import InstanceError, load_instance
 from .match import MatchStats, remember_translations, run_matching
 from .memory import Memory
 from .output.apply import ApplyError, apply as apply_outputs, resolve_mode, restore as restore_outputs
+from .output.patch import export_patch
+from .review import export_review, import_review
 from .store import Workspace
 from .translate.client import client_from_config
 from .translate.engine import EngineSettings, estimate, run_translation, select_entries
 from .translate.glossary import build_glossary, load_user_glossary
 
 app = typer.Typer(help="Minecraft 整合包自动汉化工具", no_args_is_help=True, add_completion=False)
+review_app = typer.Typer(help="导出 / 导入 Excel 审校表格", no_args_is_help=True)
+app.add_typer(review_app, name="review")
 console = Console()
 
 MAX_WARNINGS_SHOWN = 20
@@ -263,3 +267,56 @@ def run(instance: InstanceArg,
     do_scan(instance, mc_version)
     do_translate(instance, provider, dry_run=False, yes=yes, only=only, limit=limit)
     do_apply(instance, set_lang, dry_run=False, mode=mode)
+
+
+@review_app.command("export")
+def review_export(instance: InstanceArg,
+                  file: Annotated[Path, typer.Argument(help="导出的 Excel 文件路径（.xlsx）")],
+                  all_rows: Annotated[bool, typer.Option("--all", help="导出全部条目（默认只导出机翻、待翻译和需复核的）")] = False,
+                  only: OnlyOpt = None):
+    """导出待审校的条目到 Excel。"""
+    ws = _open_scanned(instance)
+    with ws:
+        n = export_review(ws, file, include_all=all_rows, handlers=set(only) if only else None)
+    console.print(f"已导出 {n} 条到 {file}")
+    console.print("修改「译文」列或在「确认」列填「是」，保存后运行 mctrans review import 导入")
+
+
+@review_app.command("import")
+def review_import(instance: InstanceArg,
+                  file: Annotated[Path, typer.Argument(help="审校后的 Excel 文件", exists=True, dir_okay=False)],
+                  force: Annotated[bool, typer.Option("--force", help="不检查格式码是否与原文一致")] = False):
+    """导入审校结果（标记为人工确认，并写入记忆库）。"""
+    ws = _open_scanned(instance)
+    with ws:
+        try:
+            report = import_review(ws, file, force=force)
+        except ValueError as exc:
+            _fail(str(exc))
+        with Memory.default() as memory:
+            remember_translations(ws, memory)
+    console.print(
+        f"导入完成：修改 {report.updated} 条，确认 {report.confirmed} 条，未改动 {report.unchanged} 条，"
+        f"找不到的 ID {report.unknown} 条，拒绝 {len(report.invalid)} 条"
+    )
+    for line in report.invalid[:MAX_WARNINGS_SHOWN]:
+        console.print(f"[yellow]拒绝：[/yellow]{line}")
+    if report.updated or report.confirmed:
+        console.print("运行 mctrans apply 使修改生效")
+
+
+@app.command("export-patch")
+def export_patch_cmd(instance: InstanceArg,
+                     out_dir: Annotated[Path, typer.Argument(help="补丁输出目录（必须不存在或为空）")],
+                     mode: ModeOpt = "auto"):
+    """把汉化结果导出为独立的补丁目录，便于分发（不修改实例）。"""
+    ws = _open_scanned(instance)
+    with ws:
+        try:
+            chosen = resolve_mode(mode, ws.get_meta("has_i18nupdatemod") == "1")
+            report = export_patch(instance, ws, ws.get_meta("mc_version"), out_dir, chosen)
+        except ApplyError as exc:
+            _fail(str(exc))
+    console.print(f"已导出补丁到 {out_dir}（译文 {report.entries} 条，文件 {len(report.files)} 个）")
+    if report.includes_cfpa:
+        console.print("[yellow]补丁包含 CFPA 社区译文（CC BY-NC-SA 4.0），分发时请保留说明文件，且不得商用[/yellow]")

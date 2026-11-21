@@ -186,3 +186,32 @@ def test_scripts_end_to_end(pack, mctrans_home):
     invoke("restore", root)
     assert js.read_bytes() == original_js.encode("utf-8")
     assert (root / "config" / "tips" / "t.txt").read_bytes() == b"tip=Press F3\n"
+
+
+def test_review_round_trip_and_patch(pack, tmp_path):
+    from openpyxl import load_workbook
+    root, _ = pack
+    invoke("run", root, "--yes")
+    xlsx = tmp_path / "review.xlsx"
+    out = invoke("review", "export", root, xlsx).output
+    assert "导出 1 条" in out
+    wb = load_workbook(xlsx)
+    sheet = wb["审校"]
+    sheet["F2"].value = "使用齿轮 %s"
+    wb.save(xlsx)
+    out = invoke("review", "import", root, xlsx).output
+    assert "修改 1 条" in out
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+        assert json.loads(z.read("assets/create/lang/zh_cn.json"))["tip.create.x"] == "译Use the Gear %s"
+    invoke("apply", root)
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+        assert json.loads(z.read("assets/create/lang/zh_cn.json"))["tip.create.x"] == "使用齿轮 %s"
+    from mctrans.memory import Memory
+    with Memory.default() as memory:
+        assert memory.lookup("create", "Use the Gear %s").confirmed is True
+    patch_dir = tmp_path / "patch"
+    out = invoke("export-patch", root, patch_dir).output
+    assert "CC BY-NC-SA" in out
+    assert (patch_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    result = runner.invoke(cli.app, ["export-patch", str(root), str(patch_dir)])
+    assert result.exit_code == 1 and "不为空" in result.output

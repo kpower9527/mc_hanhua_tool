@@ -104,6 +104,25 @@ pattern = '^tip=(?P<text>.+)$'          # 多行正则，命名组 text 是要�
 
 以上文件修改前都会自动备份，可以用 `restore` 还原。
 
+### 人工审校
+
+```
+uv run mctrans review export <实例目录> review.xlsx     # 导出机翻、待翻译和需复核的条目（--all 导出全部，--only 按类别）
+# 用 Excel / WPS 修改「译文」列，或在「确认」列填「是」
+uv run mctrans review import <实例目录> review.xlsx     # 导入，标记为人工确认
+uv run mctrans apply <实例目录>                          # 重新应用使修改生效
+```
+
+人工确认的译文不会被自动覆盖，也会写入记忆库，在其他整合包中直接复用。格式码（`§a`、`%s`、`{0}`、`$(item)`、`&6` 等）与原文不一致的行会被拒绝导入。
+
+### 导出补丁分发
+
+```
+uv run mctrans export-patch <实例目录> <输出目录>
+```
+
+生成与实例目录结构相同的补丁（资源包、修改过的任务书和脚本等）以及使用说明，不修改实例本身。包含 CFPA 社区译文时请遵守 CC BY-NC-SA 4.0（署名、非商业、相同方式共享）。
+
 ### 实例目录
 
 实例目录是包含 `mods/` 的那一层，例如 HMCL/PCL 开启版本隔离时的 `.minecraft/versions/<版本名>/`，或 Prism 的 `instances/<实例名>/minecraft/`。版本识别失败时用 `--mc-version 1.20.1` 指定。
