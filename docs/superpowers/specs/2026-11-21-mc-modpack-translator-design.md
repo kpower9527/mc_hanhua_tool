@@ -312,6 +312,13 @@ class Handler:
 3. 新版 FTB Quests 语言文件的确切路径与格式，以及从哪个版本开始支持
 4. CFPA 资源包的发布文件名格式与获取方式
 
+### 9.1 验证结论（2026-11-21）
+
+1. **I18nUpdateMod**：生成 `resourcepacks/Minecraft-Mod-Language-Modpack-Converted-<MC版本>.zip`。options.txt 中已有该 ID 时不调整顺序；没有时追加到最上层。因此 `apply` 预先写入该 ID 并在其上下放置修正包和补全包即可稳定控制顺序（NeoForge 运行时激活仅在首次注册时调整顺序，需进游戏确认）
+2. **Patchouli**：待计划 3 验证
+3. **新版 FTB Quests 语言文件**：待计划 3 验证
+4. **CFPA 发布**：`autobuild` 滚动发布，地址固定，资源包与 md5 文件命名见计划 2。包内只有 zh_cn，没有 en_us，因此第 4 节"英文原文不一致时不采用"改为"参数签名不一致时不采用"，"全量术语表"改为使用当前整合包已匹配到的译文
+
 ## 10. 错误处理
 
 - 单个文件解析失败不中断流程，记录日志，结束时汇总报告
