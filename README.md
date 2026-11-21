@@ -1,6 +1,6 @@
 # mctrans：Minecraft 整合包自动汉化工具
 
-把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册，MC 1.16 及以上。
+把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册、KubeJS 与 CraftTweaker 脚本中的提示文本，以及按规则指定的配置文本，MC 1.16 及以上。
 
 ## 安装
 
@@ -89,6 +89,20 @@ uv run mctrans translate <实例目录> --only ftbquests --limit 50
 ```
 
 注意：装有 Lang Splitter 时，游戏启动后会重写 `zh_cn.snbt`，此时 `restore` 会跳过这个文件（提示"应用后被改动过"），需要时手动删除即可。
+
+### 脚本与配置文本
+
+- **KubeJS**：翻译 `kubejs/*_scripts/` 中 `Text.of(...)`、`Text.red(...)` 等、`.displayName(...)`、`.tooltip(...)` 里的文字；`Text.translatable(...)` 与资源 ID 不会被改动
+- **CraftTweaker**：翻译 `scripts/*.zs` 中 `format.xxx(...)`、`.addTooltip(...)`、`.addShiftTooltip(...)`、`.displayName = ...` 等处的文字
+- **配置文本**：默认不处理。需要时在 `~/.mctrans/config_rules.toml`（全局）或 `<实例目录>/.mctrans/config_rules.toml`（单个整合包）中添加规则：
+
+```toml
+[[rule]]
+glob = "config/loadingtips/*.txt"      # 相对实例目录的文件匹配
+pattern = '^tip=(?P<text>.+)$'          # 多行正则，命名组 text 是要翻译的部分
+```
+
+以上文件修改前都会自动备份，可以用 `restore` 还原。
 
 ### 实例目录
 

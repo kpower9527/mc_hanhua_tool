@@ -167,3 +167,22 @@ def test_quests_and_patchouli_end_to_end(pack):
     assert origins == {"chapter.01.title": "mod_builtin", "quest.02.quest_desc[0]": "llm"}
     invoke("restore", root)
     assert (lang_dir / "zh_cn.snbt").read_bytes() == '{\n\tchapter.01.title: "新手入门"\n}\n'.encode("utf-8")
+
+
+def test_scripts_end_to_end(pack, mctrans_home):
+    root, fake = pack
+    js = root / "kubejs" / "client_scripts" / "tooltips.js"
+    js.parent.mkdir(parents=True)
+    original_js = "ItemEvents.modifyTooltips(e => {\n  e.add('a:b', [Text.of('Mining Dimension Disabled')])\n})\n"
+    js.write_bytes(original_js.encode("utf-8"))
+    (root / "config" / "tips").mkdir(parents=True)
+    (root / "config" / "tips" / "t.txt").write_bytes(b"tip=Press F3\n")
+    mctrans_home.mkdir(parents=True, exist_ok=True)
+    (mctrans_home / "config_rules.toml").write_text(
+        "[[rule]]\nglob = \"config/tips/*.txt\"\npattern = '^tip=(?P<text>.+)$'\n", encoding="utf-8")
+    invoke("run", root, "--yes")
+    assert js.read_text(encoding="utf-8") == original_js.replace("'Mining Dimension Disabled'", "'译Mining Dimension Disabled'")
+    assert (root / "config" / "tips" / "t.txt").read_bytes() == "tip=译Press F3\n".encode("utf-8")
+    invoke("restore", root)
+    assert js.read_bytes() == original_js.encode("utf-8")
+    assert (root / "config" / "tips" / "t.txt").read_bytes() == b"tip=Press F3\n"
