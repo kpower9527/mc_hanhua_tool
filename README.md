@@ -12,7 +12,7 @@
 
 同一目录下的 `mctrans-cli.exe` 是命令行版，用法与下文相同（把 `uv run mctrans` 换成 `mctrans-cli`）。
 
-自己构建：`uv run python packaging/build.py`，产物在 `dist/`。
+自己构建：`uv run python packaging/build.py`，产物为 `dist/mctrans-<版本>-windows.zip`（解压前的目录在 `dist/<版本>/mctrans/`）。
 
 ## 命令行版安装
 

@@ -31,10 +31,10 @@ def make_icon(path: Path) -> None:
     del app
 
 
-def run_pyinstaller() -> None:
+def run_pyinstaller(distpath: Path) -> None:
     subprocess.run(
         [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
-         "--distpath", str(DIST), "--workpath", str(BUILD / "pyinstaller"), str(ROOT / "packaging" / "mctrans.spec")],
+         "--distpath", str(distpath), "--workpath", str(BUILD / "pyinstaller"), str(ROOT / "packaging" / "mctrans.spec")],
         check=True, cwd=ROOT,
     )
 
@@ -67,11 +67,15 @@ def make_zip(app_dir: Path, version: str) -> Path:
 def main() -> None:
     from mctrans import __version__
 
+    # 每个版本构建到独立目录（dist/<版本>/mctrans），避免与正在运行的旧版本冲突
+    version_dir = DIST / __version__
     shutil.rmtree(BUILD, ignore_errors=True)
-    shutil.rmtree(DIST / "mctrans", ignore_errors=True)
+    shutil.rmtree(version_dir, ignore_errors=True)
+    if version_dir.exists():
+        raise SystemExit(f"无法清理 {version_dir}，请先关闭正在运行的 {__version__} 版程序")
     make_icon(BUILD / "icon.ico")
-    run_pyinstaller()
-    app_dir = DIST / "mctrans"
+    run_pyinstaller(version_dir)
+    app_dir = version_dir / "mctrans"
     smoke_test(app_dir)
     size = sum(p.stat().st_size for p in app_dir.rglob("*") if p.is_file()) / 1024 / 1024
     target = make_zip(app_dir, __version__)
