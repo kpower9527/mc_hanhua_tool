@@ -7,7 +7,7 @@ import pytest
 from typer.testing import CliRunner
 
 from helpers import FakeClient, jar_bytes, lang, make_jar
-from mctrans import cli
+from mctrans import cli, service
 from mctrans.output.options import read_packs
 
 runner = CliRunner()
@@ -28,7 +28,7 @@ def fake_cfpa_fetch(url):
 def no_network(monkeypatch):
     def offline(url):
         raise OSError("测试中禁止联网")
-    monkeypatch.setattr(cli, "http_fetch", offline)
+    monkeypatch.setattr(service, "http_fetch", offline)
 
 
 @pytest.fixture
@@ -41,8 +41,8 @@ def pack(instance_dir, monkeypatch):
         "assets/create/lang/zh_cn.json": lang({"item.create.gear": "齿轮"}),
     })
     fake = FakeClient()
-    monkeypatch.setattr(cli, "client_from_config", lambda p: fake)
-    monkeypatch.setattr(cli, "http_fetch", fake_cfpa_fetch)
+    monkeypatch.setattr(service, "client_from_config", lambda p: fake)
+    monkeypatch.setattr(service, "http_fetch", fake_cfpa_fetch)
     return instance_dir, fake
 
 
