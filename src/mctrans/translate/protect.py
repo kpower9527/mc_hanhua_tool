@@ -13,7 +13,7 @@ PROTECT_RE = re.compile("|".join([
     r"%(?:\d+\$)?[-#+0,(]*\d*(?:\.\d+)?[a-zA-Z%]", # printf 参数
     r"\{[^{}\n]*\}",                               # {0} {player} {@pagebreak} {image:...}
     r"\$\([^)]*\)",                                # Patchouli 宏
-    r"\n",                                        # 字面量 \n
+    r"\\n",                                        # 字面量 \n（反斜杠 + n）
     r"\n",                                         # 真实换行
 ]))
 
