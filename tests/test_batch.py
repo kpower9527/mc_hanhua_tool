@@ -42,7 +42,7 @@ def test_prompt_contains_masked_text_and_glossary():
     client = FakeClient()
     translate_batch(client, units("§aGear"), "create", "kind", g)
     sent = json.loads(client.calls[0].split(INPUT_MARKER, 1)[1])
-    assert sent == {"1": {"text": "⟦0⟧Gear", "hint": "key.0"}}
+    assert sent == {"1": {"text": "Gear", "hint": "key.0"}}  # 开头的格式码不发给模型
     assert "- Gear → 齿轮" in client.calls[0]
 
 
@@ -105,3 +105,26 @@ def test_thinking_switch_only_for_dashscope():
     assert client_from_config(qwen).extra_body == {"enable_thinking": True}
     deepseek = ProviderConfig("deepseek", "https://api.deepseek.com", "deepseek-chat", api_key="k")
     assert client_from_config(deepseek).extra_body is None
+
+
+def test_leading_and_trailing_tokens_are_not_sent_to_model():
+    import re
+    # 模拟会丢掉所有占位符的模型：首尾格式码由程序保留，不受影响；中间的格式码丢了仍会被拒绝
+    client = FakeClient(lambda t: "译" + re.sub(r"⟦\d+⟧", "", t))
+    res = translate_batch(client, units("&aSlime Armor", "§5§lMekanism§r", "  &9Rare&r ", "The &6Plough&r works"),
+                          "ns", "k", Glossary())
+    assert [r.text for r in res[:3]] == ["&a译Slime Armor", "§5§l译Mekanism§r", "  &9译Rare&r "]
+    assert res[3].text is None and "占位符" in res[3].error
+    sent = json.loads(client.calls[0].split(INPUT_MARKER, 1)[1])
+    assert [v["text"] for v in sent.values()] == ["Slime Armor", "Mekanism", "Rare", "The ⟦0⟧Plough⟦1⟧ works"]
+
+
+def test_arguments_at_edges_stay_with_model():
+    from mctrans.translate.batch import split_edges
+    from mctrans.translate.protect import protect
+    # 参数要留给模型调整语序；颜色码、换行、Patchouli 宏可以剥离
+    assert split_edges(protect("%s was slain by %s")) == ("", "⟦0⟧ was slain by ⟦1⟧", "")
+    assert split_edges(protect("&c%s died&r")) == ("⟦0⟧", "⟦1⟧ died", "⟦2⟧")
+    assert split_edges(protect("$(item)Wrench$(): a tool")) == ("⟦0⟧", "Wrench⟦1⟧: a tool", "")
+    assert split_edges(protect("&a&lTitle&r ")) == ("⟦0⟧⟦1⟧", "Title", "⟦2⟧")
+    assert split_edges(protect("&a&r")) == ("", "⟦0⟧⟦1⟧", "")

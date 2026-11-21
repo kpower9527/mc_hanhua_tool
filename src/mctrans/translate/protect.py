@@ -38,14 +38,41 @@ def protect(text: str) -> Masked:
     return Masked(PROTECT_RE.sub(repl, text), tokens)
 
 
-def restore(translated: str, masked: Masked) -> str:
+# 只影响外观的格式码：颜色/样式码与换行。缺少或多出只会让颜色、分段不完全一致，不会出错
+COSMETIC_RE = re.compile(r"^(?:§.|&[0-9a-fk-or]|\\n|\n)$")
+
+
+def _is_cosmetic(masked: Masked, index: str) -> bool:
+    i = int(index)
+    return i < len(masked.tokens) and bool(COSMETIC_RE.match(masked.tokens[i]))
+
+
+def restore(translated: str, masked: Masked, allow_cosmetic_mismatch: bool = False) -> str:
+    """把占位符还原为格式码。
+
+    allow_cosmetic_mismatch=True 时，若差异只在颜色/样式码和换行（参数 %s、{0}、Patchouli 宏必须完全一致），
+    仍然接受，用于多次重试仍失败的长段落。
+    """
     found = Counter(TOKEN_RE.findall(translated))
     expected = Counter(str(i) for i in range(len(masked.tokens)))
     if found != expected:
-        raise TokenMismatch(
-            f"占位符不一致：期望 {sorted(expected.elements())}，实际 {sorted(found.elements())}"
-        )
+        diff = list(((expected - found) + (found - expected)).elements())
+        if not (allow_cosmetic_mismatch and all(_is_cosmetic(masked, i) for i in diff)):
+            raise TokenMismatch(
+                f"占位符不一致：期望 {sorted(expected.elements())}，实际 {sorted(found.elements())}"
+            )
     return TOKEN_RE.sub(lambda m: masked.tokens[int(m.group(1))], translated)
+
+
+def token_differences(translated: str, masked: Masked) -> tuple[list[str], list[str]]:
+    """返回 (缺少的格式码, 多出的格式码)。"""
+    found = Counter(TOKEN_RE.findall(translated))
+    expected = Counter(str(i) for i in range(len(masked.tokens)))
+
+    def names(counter: Counter) -> list[str]:
+        return [masked.tokens[int(i)] for i in sorted(counter.elements(), key=int) if int(i) < len(masked.tokens)]
+
+    return names(expected - found), names(found - expected)
 
 
 def has_translatable_text(masked_text: str) -> bool:

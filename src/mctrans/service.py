@@ -265,8 +265,16 @@ def translate(root: Path, provider: str | None = None, only=None, limit: int | N
             done += n
             reporter.progress(done, est.entries)
 
+        def on_error(count: int, reason: str, final: bool) -> None:
+            if len(reason) > 160:
+                reason = reason[:160] + "…"
+            if final:
+                reporter.log(f"{count} 条多次重试仍失败，已放弃（可在审校页手动处理或稍后重新翻译）：{reason}", "warn")
+            else:
+                reporter.log(f"{count} 条翻译失败，稍后自动重试：{reason}", "warn")
+
         report = run_translation(ws, client, glossary, engine_settings, on_progress=advance,
-                                 entries=entries, should_stop=reporter.cancelled)
+                                 entries=entries, should_stop=reporter.cancelled, on_error=on_error)
         ws.finish_run(run_id, vars(report))
         with Memory.default() as memory:
             remember_translations(ws, memory)

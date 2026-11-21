@@ -141,3 +141,51 @@ def test_run_translation_can_be_cancelled(ws):
                              on_progress=calls.append, should_stop=lambda: len(calls) >= 1)
     assert report.cancelled and report.translated == 1 and report.failed == 0
     assert ws.status_counts() == {"done": 1, "pending": 2}
+
+
+def test_slow_request_does_not_block_retries(ws):
+    import threading
+    ws.sync_entries("lang_json", [e("k1", "Slow"), e("k2", "Flaky")])
+    retried = threading.Event()
+    calls = {"Flaky": 0}
+
+    def fn(text):
+        if text == "Slow":
+            retried.wait(timeout=5)  # 模拟挂住的请求：要等另一条重试完才返回
+            return "慢"
+        calls["Flaky"] += 1
+        if calls["Flaky"] == 1:
+            return None  # 第一次漏掉
+        retried.set()
+        return "好"
+
+    errors = []
+    settings = EngineSettings(batch_size=1, batch_max_chars=6000, concurrency=2, requests_per_minute=0, max_retries=2)
+    start = time.monotonic()
+    report = run_translation(ws, FakeClient(fn), Glossary(), settings,
+                             on_error=lambda n, reason, final: errors.append((n, reason, final)))
+    assert retried.is_set() and time.monotonic() - start < 3  # 重试没有等那个慢请求
+    assert report.translated == 2 and report.failed == 0
+    assert errors == [(1, "缺少译文", False)]
+
+
+def test_final_failures_count_as_progress(ws):
+    ws.sync_entries("lang_json", [e("k1", "Bad %s")])
+    progress, errors = [], []
+    settings = EngineSettings(batch_size=1, batch_max_chars=6000, concurrency=1, requests_per_minute=0, max_retries=1)
+    report = run_translation(ws, FakeClient(lambda t: "丢失"), Glossary(), settings,
+                             on_progress=progress.append, on_error=lambda n, r, final: errors.append(final))
+    assert report.failed == 1 and sum(progress) == 1  # 进度条能走到 100%
+    assert errors == [False, True]
+
+
+def test_last_attempt_accepts_missing_colors_with_note(ws):
+    import re
+    ws.sync_entries("lang_json", [e("k1", "Use the &6Plough&r on %s")])
+    # 模型总是丢掉颜色码，但保留参数
+    client = FakeClient(lambda t: "译" + re.sub(r"⟦[01]⟧", "", t))
+    settings = EngineSettings(batch_size=1, batch_max_chars=6000, concurrency=1, requests_per_minute=0, max_retries=1)
+    report = run_translation(ws, client, Glossary(), settings)
+    assert report.translated == 1 and report.failed == 0 and len(client.calls) == 2  # 第一次严格失败，第二次放宽
+    row = ws.conn.execute("SELECT t.text, t.note FROM translations t").fetchone()
+    assert row["text"] == "译Use the Plough on %s" and "缺少 &6 &r" in row["note"]

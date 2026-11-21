@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Callable
@@ -117,7 +118,13 @@ class RateLimiter:
 def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settings: EngineSettings,
                     on_progress: Callable[[int], None] | None = None,
                     entries: list[Entry] | None = None,
-                    should_stop: Callable[[], bool] | None = None) -> TranslateReport:
+                    should_stop: Callable[[], bool] | None = None,
+                    on_error: Callable[[int, str, bool], None] | None = None) -> TranslateReport:
+    """翻译待处理条目。
+
+    失败的条目立即拆成更小的批次放回队列重试（不等其他批次），重试 max_retries 次后标记为失败。
+    on_progress(n)：n 条已处理完（成功或最终失败）；on_error(条数, 原因, 是否放弃)：有条目失败时回调。
+    """
     report = TranslateReport()
     groups, skipped = group_units(ws.pending_entries() if entries is None else entries)
     if skipped:
@@ -126,72 +133,66 @@ def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settin
 
     limiter = RateLimiter(settings.requests_per_minute)
     kinds = {g.handler: get_handler(g.handler).kind_label for g in groups}
-    last_error: dict[int, str] = {}
-    batch_size = settings.batch_size
-    pending = [(g, b) for g in groups for b in make_batches(g.units, batch_size, settings.batch_max_chars)]
 
-    def job(group: Group, batch: list[Unit]) -> list[UnitResult]:
+    def job(group: Group, batch: list[Unit], lenient: bool) -> list[UnitResult]:
         limiter.acquire()
-        return translate_batch(client, batch, group.namespace, kinds[group.handler], glossary)
+        return translate_batch(client, batch, group.namespace, kinds[group.handler], glossary, lenient)
 
     workers = max(1, settings.concurrency)
-    for _attempt in range(settings.max_retries + 1):
-        if not pending or report.cancelled:
-            break
-        failed: dict[int, tuple[Group, list[Unit]]] = {}
-        queue = list(pending)
-        in_flight: dict = {}
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            def submit_more() -> None:
-                # 滑动窗口：同时在途的批次不超过并发数，取消后不再提交新批次
-                while queue and len(in_flight) < workers and not report.cancelled:
-                    g, b = queue.pop(0)
-                    in_flight[pool.submit(job, g, b)] = (g, b)
+    queue: deque[tuple[Group, list[Unit], int]] = deque(
+        (g, b, 0) for g in groups for b in make_batches(g.units, settings.batch_size, settings.batch_max_chars)
+    )
+    in_flight: dict = {}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        def submit_more() -> None:
+            # 滑动窗口：同时在途的批次不超过并发数，取消后不再提交新批次
+            while queue and len(in_flight) < workers and not report.cancelled:
+                g, b, attempt = queue.popleft()
+                # 最后一次尝试时放宽：只少颜色码的译文也接受（带审校备注），避免长段落整条失败
+                lenient = attempt >= settings.max_retries
+                in_flight[pool.submit(job, g, b, lenient)] = (g, b, attempt)
 
+        submit_more()
+        while in_flight:
+            finished, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                group, batch, attempt = in_flight.pop(fut)
+                report.requests += 1
+                updates: list[TranslationUpdate] = []
+                done = 0
+                retry: list[Unit] = []
+                errors: dict[str, int] = {}
+                for unit, result in zip(batch, fut.result()):
+                    if result.text is not None:
+                        updates.extend(
+                            TranslationUpdate(i, result.text, "llm", "done", client.model, result.note)
+                            for i in unit.entry_ids
+                        )
+                        done += len(unit.entry_ids)
+                        continue
+                    error = result.error or "未知错误"
+                    errors[error] = errors.get(error, 0) + 1
+                    if attempt < settings.max_retries:
+                        retry.append(unit)
+                    else:
+                        updates.extend(TranslationUpdate(i, None, None, "failed", None, error) for i in unit.entry_ids)
+                        report.failed += len(unit.entry_ids)
+                        done += len(unit.entry_ids)
+                if updates:
+                    ws.save_translations(updates)
+                report.translated += sum(1 for u in updates if u.status == "done")
+                if on_error and errors:
+                    reason = max(errors, key=errors.get)
+                    on_error(sum(errors.values()), reason, not retry)
+                if retry:
+                    size = max(1, settings.batch_size // (4 ** (attempt + 1)))
+                    for b in make_batches(retry, size, settings.batch_max_chars):
+                        queue.append((group, b, attempt + 1))
+                if on_progress and done:
+                    on_progress(done)
+            if should_stop is not None and should_stop():
+                report.cancelled = True  # 已完成的已保存，其余条目保持待翻译
             submit_more()
-            while in_flight:
-                finished, _ = wait(in_flight, return_when=FIRST_COMPLETED)
-                for fut in finished:
-                    group, batch = in_flight.pop(fut)
-                    report.requests += 1
-                    updates: list[TranslationUpdate] = []
-                    done = 0
-                    for unit, result in zip(batch, fut.result()):
-                        if result.text is not None:
-                            updates.extend(
-                                TranslationUpdate(i, result.text, "llm", "done", client.model, result.note)
-                                for i in unit.entry_ids
-                            )
-                            done += len(unit.entry_ids)
-                        else:
-                            last_error[id(unit)] = result.error or "未知错误"
-                            failed.setdefault(id(group), (group, []))[1].append(unit)
-                    if updates:
-                        ws.save_translations(updates)
-                    report.translated += done
-                    if on_progress and done:
-                        on_progress(done)
-                if should_stop is not None and should_stop():
-                    report.cancelled = True
-                submit_more()
-        if report.cancelled:
-            return report  # 已完成的已保存，其余条目保持待翻译
-        batch_size = max(1, batch_size // 4)
-        pending = [
-            (g, b) for g, us in failed.values()
-            for b in make_batches(us, batch_size, settings.batch_max_chars)
-        ]
-
-    final: list[TranslationUpdate] = []
-    for _group, batch in pending:
-        for unit in batch:
-            final.extend(
-                TranslationUpdate(i, None, None, "failed", None, last_error.get(id(unit)))
-                for i in unit.entry_ids
-            )
-            report.failed += len(unit.entry_ids)
-    if final:
-        ws.save_translations(final)
     return report
 
 

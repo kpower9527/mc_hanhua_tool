@@ -60,3 +60,21 @@ def test_ftb_style_tokens():
     assert protect("{@pagebreak}").tokens == ["{@pagebreak}"]
     assert protect("See {image:atm:textures/a.png width:50}").tokens == ["{image:atm:textures/a.png width:50}"]
     assert protect("Rock&roll &amp").tokens == []
+
+
+def test_restore_allow_cosmetic_mismatch():
+    m = protect("Use the &6Plough&r on %s")
+    # 只少颜色码：宽松模式接受，严格模式拒绝
+    assert restore("对 ⟦2⟧ 使用犁", m, allow_cosmetic_mismatch=True) == "对 %s 使用犁"
+    with pytest.raises(TokenMismatch):
+        restore("对 ⟦2⟧ 使用犁", m)
+    # 多出颜色码：外观问题，宽松模式接受
+    assert restore("⟦0⟧⟦0⟧犁⟦1⟧ ⟦2⟧", m, allow_cosmetic_mismatch=True) == "&6&6犁&r %s"
+    # 少了或多出参数：宽松模式也拒绝
+    with pytest.raises(TokenMismatch):
+        restore("对 ⟦0⟧犁⟦1⟧ 使用", m, allow_cosmetic_mismatch=True)
+    with pytest.raises(TokenMismatch):
+        restore("⟦0⟧犁⟦1⟧ ⟦2⟧ ⟦2⟧", m, allow_cosmetic_mismatch=True)
+    # 字面量换行（反斜杠 + n）缺少：外观问题，接受
+    n = protect("Line one\\n\\nLine two")
+    assert restore("第一行第二行", n, allow_cosmetic_mismatch=True) == "第一行第二行"

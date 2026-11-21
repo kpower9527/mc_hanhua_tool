@@ -14,14 +14,17 @@ class LLMClient(Protocol):
 class OpenAICompatClient:
     """OpenAI 兼容接口客户端。429/5xx/超时由 openai SDK 自动指数退避重试。"""
 
-    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 120.0,
-                 max_retries: int = 5, temperature: float = 0.2, extra_body: dict | None = None):
+    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 90.0,
+                 max_retries: int = 2, temperature: float = 0.2, extra_body: dict | None = None):
+        import httpx
         from openai import OpenAI
 
         self.model = model
         self.temperature = temperature
         self.extra_body = extra_body
-        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=max_retries)
+        # 超时不宜过长：引擎自己会把失败的条目拆小重试，单个请求挂住不应拖住整个任务
+        self._client = OpenAI(base_url=base_url, api_key=api_key, max_retries=max_retries,
+                              timeout=httpx.Timeout(timeout, connect=15.0))
 
     def complete(self, system: str, user: str) -> str:
         resp = self._client.chat.completions.create(
