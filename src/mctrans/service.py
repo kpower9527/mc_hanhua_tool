@@ -214,6 +214,18 @@ def plan_translation(root: Path, provider: str | None = None, only=None, limit: 
     return TranslationPlan(entries, est, pcfg)
 
 
+def quick_estimate(root: Path, provider: str | None = None) -> TranslationPlan | None:
+    """不做记忆库匹配的快速预估（用于界面刷新）；未扫描时返回 None。"""
+    if not summary(root).scanned:
+        return None
+    settings = _settings()
+    pcfg = _provider(settings, provider)
+    with _workspace(root) as ws:
+        entries = ws.pending_entries()
+    est = estimate(entries, EngineSettings.from_settings(settings), pcfg.price_input, pcfg.price_output)
+    return TranslationPlan(entries, est, pcfg)
+
+
 def describe_estimate(est: Estimate, pcfg: ProviderConfig) -> str:
     return (f"待翻译 {est.entries} 条（去重后 {est.units} 条），预计 {est.requests} 次请求，"
             f"输入约 {est.input_tokens:,} tokens、输出约 {est.output_tokens:,} tokens，"

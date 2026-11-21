@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")  # 界面测试不弹出真实窗口
 
 import pytest
 
