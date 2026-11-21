@@ -11,6 +11,7 @@ from ..snbt import SNBTError, SString, dump_lang, parse, replace_spans, to_lang_
 from .base import Handler, OutputSink
 
 QUESTS_DIR = "config/ftbquests/quests"
+LEGACY_DIR = "config/ftbquests/normal"
 LANG_DIR = f"{QUESTS_DIR}/lang"
 ZH_FILE = f"{LANG_DIR}/zh_cn.snbt"
 LANG_SOURCE = "ftbquests:lang"
@@ -25,6 +26,7 @@ def inline_files(root: Path) -> list[str]:
     files = [quests / "data.snbt", quests / "chapter_groups.snbt"]
     files += sorted((quests / "chapters").glob("*.snbt"))
     files += sorted((quests / "reward_tables").glob("*.snbt"))
+    files += sorted((Path(root) / LEGACY_DIR).rglob("*.snbt"))
     return [p.relative_to(root).as_posix() for p in files if p.is_file()]
 
 
@@ -89,7 +91,7 @@ class FtbQuestsHandler(Handler):
     output = "instance"
 
     def detect(self, instance: Instance) -> bool:
-        return (instance.root / QUESTS_DIR).is_dir()
+        return (instance.root / QUESTS_DIR).is_dir() or (instance.root / LEGACY_DIR).is_dir()
 
     def extract(self, instance: Instance) -> Iterator[Entry]:
         self.warnings = []

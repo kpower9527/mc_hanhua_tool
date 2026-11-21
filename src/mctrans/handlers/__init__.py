@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .base import Handler, OutputSink
+from .betterquesting import BetterQuestingHandler
 from .config_text import ConfigTextHandler
 from .ftbquests import FtbQuestsHandler
 from .lang_json import LangJsonHandler
@@ -11,7 +12,7 @@ __all__ = ["Handler", "OutputSink", "all_handlers", "get_handler"]
 
 
 def all_handlers() -> list[Handler]:
-    return [LangJsonHandler(), FtbQuestsHandler(), PatchouliHandler(),
+    return [LangJsonHandler(), FtbQuestsHandler(), PatchouliHandler(), BetterQuestingHandler(),
             KubeJsHandler(), CraftTweakerHandler(), ConfigTextHandler()]
 
 

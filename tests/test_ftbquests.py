@@ -176,3 +176,18 @@ def test_lang_format_takes_precedence_over_inline(inline_pack):
     put(inline_pack, f"{LANG}/en_us.snbt", '{\n\tquest.01.title: "From lang"\n}\n')
     _, entries = extract(inline_pack)
     assert [e.source for e in entries] == [LANG_SOURCE]
+
+
+def test_legacy_112_layout(instance_dir):
+    base = "config/ftbquests/normal"
+    put(instance_dir, f"{base}/chapters/start/chapter.snbt", '{\n\ttitle: "Start"\n}\n')
+    put(instance_dir, f"{base}/chapters/start/q1.snbt", '{\n\ttitle: "First"\n\tdescription: ["Do it"]\n}\n')
+    h = FtbQuestsHandler()
+    inst = load_instance(instance_dir)
+    assert h.detect(inst)
+    got = [(e.source.split("normal/", 1)[1], e.locator, e.original) for e in h.extract(inst)]
+    assert got == [
+        ("chapters/start/chapter.snbt", "title", "Start"),
+        ("chapters/start/q1.snbt", "title", "First"),
+        ("chapters/start/q1.snbt", "description[0]", "Do it"),
+    ]

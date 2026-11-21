@@ -1,6 +1,6 @@
 # mctrans：Minecraft 整合包自动汉化工具
 
-把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册、KubeJS 与 CraftTweaker 脚本中的提示文本，以及按规则指定的配置文本，MC 1.16 及以上。
+把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册、KubeJS 与 CraftTweaker 脚本中的提示文本，以及按规则指定的配置文本，支持 MC 1.12.2 与 1.16 及以上。
 
 ## 安装
 
@@ -81,6 +81,8 @@ GitHub 访问慢时，可以在配置中把 `cfpa_base_url` 改为镜像地址�
 
 - **FTB Quests**：1.21 及以上版本生成 `config/ftbquests/quests/lang/zh_cn.snbt`（保留整合包原有中文，只补缺失的部分，兼容 FTB Quests Lang Splitter）；1.20.1 及更早版本直接替换章节文件里的文本，修改前自动备份
 - **Patchouli 手册**：为没有中文的条目生成 `zh_cn` 文件，写入资源包；放在 `data/` 下的旧式手册暂不支持
+- **Better Questing**（1.12.2 常见）：翻译 `config/betterquesting/DefaultQuests.json`（或 `DefaultQuests/` 目录）中的任务名称与描述。它只在新建存档或执行 `/bq_admin default load` 时载入，已有存档需要执行该命令
+- **1.12.2**：支持 `.lang` 语言文件、CFPA 1.12.2 汉化包、旧版 FTB Quests（`config/ftbquests/normal/`）；资源包 ID 按 1.12 规则写入 `options.txt`
 
 抽样试翻，先看看效果和费用：
 
