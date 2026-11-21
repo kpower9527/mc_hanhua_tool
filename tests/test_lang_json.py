@@ -117,6 +117,28 @@ def test_write_groups_by_namespace():
 from mctrans.handlers.lang_json import dump_lang_legacy, parse_lang_legacy
 
 
+def test_extract_resourceloader_dir(tmp_path):
+    root = tmp_path / "rl"
+    (root / "mods").mkdir(parents=True)
+    make_jar(root / "mods" / "bq.jar", {"assets/betterquesting/lang/en_us.lang": "betterquesting.quest.name.1=Jar text\n"})
+    d = root / "resources" / "betterquesting" / "lang"
+    d.mkdir(parents=True)
+    (d / "en_us.lang").write_bytes(b"betterquesting.quest.name.1=Welcome to RLCraft\nother.key=Hello\n")
+    (d / "zh_cn.lang").write_bytes("other.key=你好\n".encode("utf-8"))
+    entries = list(LangJsonHandler().extract(load_instance(root, mc_version="1.12.2")))
+    got = [(x.source, x.locator, x.original, x.existing_zh) for x in entries]
+    assert got == [
+        ("jar:assets/betterquesting/lang/en_us.lang", "betterquesting.quest.name.1", "Jar text", None),
+        ("resources/betterquesting/lang/en_us.lang", "betterquesting.quest.name.1", "Welcome to RLCraft", None),
+        ("resources/betterquesting/lang/en_us.lang", "other.key", "Hello", "你好"),
+    ]
+    sink = OutputSink()
+    LangJsonHandler().write([TranslatedItem(entries[0], "罐内文本", "llm", "done"),
+                             TranslatedItem(entries[1], "欢迎来到 RLCraft", "llm", "done")], sink)
+    # 同一个键：resources/ 中的版本（游戏实际显示的英文）优先
+    assert sink.pack_files["assets/betterquesting/lang/zh_cn.lang"] == "betterquesting.quest.name.1=欢迎来到 RLCraft\n".encode("utf-8")
+
+
 def test_parse_lang_legacy():
     data = "\ufeff#PARSE_ESCAPES\n# comment\nitem.a.name=Gear\n\ntile.b.name=Shaft = long\nbad line\ntip.c=Line1\\nLine2\n".encode("utf-8")
     assert parse_lang_legacy(data) == {"item.a.name": "Gear", "tile.b.name": "Shaft = long", "tip.c": "Line1\\nLine2"}

@@ -69,19 +69,23 @@ class LangJsonHandler(Handler):
                 continue
             yield from self._from_jar(data, jar.name, 0, seen)
 
-        kubejs_assets = instance.root / "kubejs" / "assets"
-        if kubejs_assets.is_dir():
-            for lang_dir in sorted(kubejs_assets.glob("*/lang")):
-                files = {p.stem.lower(): p for p in lang_dir.glob("*.json")}
-                en = files.get("en_us")
+        # 实例内的资源目录：KubeJS 的 kubejs/assets/，以及 1.12 ResourceLoader 的 resources/
+        for base in ("kubejs/assets", "resources"):
+            res_dir = instance.root / base
+            if not res_dir.is_dir():
+                continue
+            for lang_dir in sorted(res_dir.glob("*/lang")):
+                files = {(p.stem.lower(), p.suffix[1:].lower()): p for p in lang_dir.iterdir()
+                         if p.suffix.lower() in (".json", ".lang")}
+                ext = "json" if ("en_us", "json") in files else "lang"
+                en = files.get(("en_us", ext))
                 if en is None:
                     continue
                 ns = lang_dir.parent.name
-                zh = files.get("zh_cn")
-                source = f"kubejs/assets/{ns}/lang/en_us.json"
+                zh = files.get(("zh_cn", ext))
                 yield from self._entries(
-                    source, ns, en.read_bytes(), zh.read_bytes() if zh else None, seen,
-                    en.relative_to(instance.root).as_posix(),
+                    f"{base}/{ns}/lang/en_us.{ext}", ns, en.read_bytes(), zh.read_bytes() if zh else None,
+                    seen, en.relative_to(instance.root).as_posix(), ext,
                 )
 
     def _from_jar(self, data: bytes, label: str, depth: int, seen: set) -> Iterator[Entry]:
