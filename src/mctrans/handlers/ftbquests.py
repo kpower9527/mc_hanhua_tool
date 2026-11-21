@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Iterator
+
+from ..applied import read_original
+from ..instance import Instance
+from ..models import Entry, TranslatedItem
+from ..snbt import SNBTError, dump_lang, parse, to_lang_value
+from .base import Handler, OutputSink
+
+QUESTS_DIR = "config/ftbquests/quests"
+LANG_DIR = f"{QUESTS_DIR}/lang"
+ZH_FILE = f"{LANG_DIR}/zh_cn.snbt"
+LANG_SOURCE = "ftbquests:lang"
+NAMESPACE = "ftbquests"
+LINE_RE = re.compile(r"^(.*)\[(\d+)\]$")
+
+
+def _parse_file(root: Path, rel: str, warnings: list[str]):
+    data = read_original(root, rel)
+    if data is None:
+        return None
+    try:
+        return parse(data.decode("utf-8-sig"))
+    except (SNBTError, UnicodeDecodeError) as exc:
+        warnings.append(f"任务书文件解析失败，已跳过：{rel}（{exc}）")
+        return None
+
+
+def read_table(root: Path, locale: str, warnings: list[str]) -> dict[str, str | list[str]]:
+    """合并读取 lang/<locale>.snbt 与 lang/<locale>/**/*.snbt（拆分文件优先，与 Lang Splitter 一致）。"""
+    root = Path(root)
+    files = [f"{LANG_DIR}/{locale}.snbt"]
+    split_dir = root / LANG_DIR / locale
+    if split_dir.is_dir():
+        files += sorted(p.relative_to(root).as_posix() for p in split_dir.rglob("*.snbt"))
+    table: dict[str, str | list[str]] = {}
+    for rel in files:
+        tree = _parse_file(root, rel, warnings)
+        if not isinstance(tree, dict):
+            continue
+        for key, node in tree.items():
+            value = to_lang_value(node)
+            if value is None or value == "" or value == []:
+                continue
+            table[key] = value
+    return table
+
+
+def has_lang_files(root: Path) -> bool:
+    lang = Path(root) / LANG_DIR
+    return (lang / "en_us.snbt").is_file() or (lang / "en_us").is_dir()
+
+
+class FtbQuestsHandler(Handler):
+    name = "ftbquests"
+    kind_label = "FTB Quests 任务书（任务标题、副标题与描述）"
+    output = "instance"
+
+    def detect(self, instance: Instance) -> bool:
+        return (instance.root / QUESTS_DIR).is_dir()
+
+    def extract(self, instance: Instance) -> Iterator[Entry]:
+        self.warnings = []
+        if has_lang_files(instance.root):
+            yield from self._extract_lang(instance.root)
+        else:
+            yield from self._extract_inline(instance.root)
+
+    def write(self, items: list[TranslatedItem], sink: OutputSink) -> None:
+        if sink.root is None:
+            raise ValueError("FTB Quests 处理器写出时需要实例根目录")
+        lang_items = [it for it in items if it.entry.source == LANG_SOURCE]
+        inline_items = [it for it in items if it.entry.source != LANG_SOURCE]
+        if lang_items:
+            self._write_lang(lang_items, sink)
+        if inline_items:
+            self._write_inline(inline_items, sink)
+
+    # ---- 新版：lang/<locale>.snbt ----
+    def _extract_lang(self, root: Path) -> Iterator[Entry]:
+        en = read_table(root, "en_us", self.warnings)
+        zh = read_table(root, "zh_cn", self.warnings)
+        for key, value in en.items():
+            zh_value = zh.get(key)
+            if isinstance(value, str):
+                if value.strip():
+                    yield self._entry(key, key, value, zh_value if isinstance(zh_value, str) else None)
+                continue
+            same_shape = isinstance(zh_value, list) and len(zh_value) == len(value)
+            if zh_value is not None and not same_shape:
+                continue  # 已有中文但结构不同：保持原样
+            for i, line in enumerate(value):
+                if line.strip():
+                    yield self._entry(f"{key}[{i}]", key, line, zh_value[i] if same_shape else None)
+
+    def _entry(self, locator: str, key: str, original: str, existing_zh: str | None) -> Entry:
+        return Entry(handler=self.name, source=LANG_SOURCE, locator=locator, namespace=NAMESPACE,
+                     original=original, context=key, existing_zh=existing_zh)
+
+    def _write_lang(self, items: list[TranslatedItem], sink: OutputSink) -> None:
+        warnings: list[str] = []
+        en = read_table(sink.root, "en_us", warnings)
+        out: dict[str, str | list[str]] = {
+            k: (list(v) if isinstance(v, list) else v) for k, v in read_table(sink.root, "zh_cn", warnings).items()
+        }
+        for it in items:
+            m = LINE_RE.match(it.entry.locator)
+            if m is None:
+                out[it.entry.locator] = it.text
+                continue
+            key, index = m.group(1), int(m.group(2))
+            english = en.get(key)
+            base = out.get(key)
+            if not isinstance(english, list):
+                continue
+            if not isinstance(base, list) or len(base) != len(english):
+                base = list(english)
+            if index < len(base):
+                base[index] = it.text
+            out[key] = base
+        ordered = {k: out[k] for k in en if k in out}
+        ordered.update({k: v for k, v in out.items() if k not in ordered})
+        sink.add_instance_file(ZH_FILE, dump_lang(ordered).encode("utf-8"))
+
+    # ---- 旧版：文本内嵌在章节文件中（Task 4 实现）----
+    def _extract_inline(self, root: Path) -> Iterator[Entry]:
+        return iter(())
+
+    def _write_inline(self, items: list[TranslatedItem], sink: OutputSink) -> None:
+        return None
