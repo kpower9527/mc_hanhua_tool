@@ -25,29 +25,43 @@ def _rule_files(root: Path) -> list[Path]:
     return [p for p in (home_dir() / RULES_FILE, Path(root) / ".mctrans" / RULES_FILE) if p.is_file()]
 
 
+def parse_rules(text: str, label: str) -> tuple[list[ConfigRule], list[str]]:
+    """解析规则文件内容；label 用于错误信息（通常是文件路径）。"""
+    rules: list[ConfigRule] = []
+    warnings: list[str] = []
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        return [], [f"规则文件格式错误，已跳过：{label}（{exc}）"]
+    for i, raw in enumerate(data.get("rule", [])):
+        glob, pattern = raw.get("glob"), raw.get("pattern")
+        if not isinstance(glob, str) or not isinstance(pattern, str):
+            warnings.append(f"{label} 第 {i + 1} 条规则缺少 glob 或 pattern")
+            continue
+        try:
+            compiled = re.compile(pattern, re.MULTILINE)
+        except re.error as exc:
+            warnings.append(f"{label} 第 {i + 1} 条规则的正则有误：{exc}")
+            continue
+        if "text" not in compiled.groupindex:
+            warnings.append(f"{label} 第 {i + 1} 条规则的正则缺少命名组 (?P<text>...)")
+            continue
+        rules.append(ConfigRule(glob, compiled))
+    return rules, warnings
+
+
 def load_rules(root: Path) -> tuple[list[ConfigRule], list[str]]:
     rules: list[ConfigRule] = []
     warnings: list[str] = []
     for path in _rule_files(root):
         try:
-            data = tomllib.loads(path.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError) as exc:
-            warnings.append(f"规则文件格式错误，已跳过：{path}（{exc}）")
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            warnings.append(f"无法读取规则文件：{path}（{exc}）")
             continue
-        for i, raw in enumerate(data.get("rule", [])):
-            glob, pattern = raw.get("glob"), raw.get("pattern")
-            if not isinstance(glob, str) or not isinstance(pattern, str):
-                warnings.append(f"{path} 第 {i + 1} 条规则缺少 glob 或 pattern")
-                continue
-            try:
-                compiled = re.compile(pattern, re.MULTILINE)
-            except re.error as exc:
-                warnings.append(f"{path} 第 {i + 1} 条规则的正则有误：{exc}")
-                continue
-            if "text" not in compiled.groupindex:
-                warnings.append(f"{path} 第 {i + 1} 条规则的正则缺少命名组 (?P<text>...)")
-                continue
-            rules.append(ConfigRule(glob, compiled))
+        found, problems = parse_rules(text, str(path))
+        rules.extend(found)
+        warnings.extend(problems)
     return rules, warnings
 
 
