@@ -235,6 +235,7 @@ class ReviewPage(QWidget):
         splitter.addWidget(detail)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
+        splitter.setSizes([520, 200])
 
         self.confirm_button = QPushButton("批量确认选中")
         self.confirm_button.clicked.connect(self.confirm_selected)

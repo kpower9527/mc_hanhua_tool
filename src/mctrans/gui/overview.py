@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -159,9 +160,14 @@ class OverviewPage(QWidget):
             return
         i18n = " · 检测到 I18nUpdateMod" if summary.has_i18nupdatemod else ""
         applied = " · 已应用到游戏" if service.is_applied(self.root) else ""
-        last = (summary.last_scan or "")[:19].replace("T", " ")
+        last = ""
+        if summary.last_scan:
+            try:  # 数据库中是 UTC 时间，显示为本地时间
+                last = datetime.fromisoformat(summary.last_scan).astimezone().strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                last = summary.last_scan
         self.info.setText(f"{self.root}\nMinecraft {summary.mc_version} · {summary.loader}{i18n}{applied}"
-                          f" · 上次扫描 {last}（UTC）")
+                          f" · 上次扫描 {last}")
         for handler, counts in summary.by_handler.items():
             total = sum(counts.values())
             finished = sum(counts.get(s, 0) for s in service.FINISHED_STATUSES)

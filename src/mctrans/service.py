@@ -29,7 +29,7 @@ from .translate.engine import (
 )
 from .translate.glossary import build_glossary, load_user_glossary
 from .translate.prompt import SYSTEM_PROMPT, build_user_prompt, parse_response
-from .translate.protect import protect
+from .translate.protect import has_translatable_text, protect
 
 FINISHED_STATUSES = ("done", "confirmed", "skipped")
 CFPA_LABELS = {"updated": "已下载最新版", "fresh": "已是最新", "cached": "使用缓存", "missing": "不可用"}
@@ -170,6 +170,9 @@ def scan(root: Path, mc_version: str | None = None, use_cfpa: bool = True, offli
         index = _load_cfpa(inst, settings, offline, reporter) if use_cfpa else None
         with Memory.default() as memory:
             match = run_matching(ws, index, memory)
+        # 纯符号 / 纯格式码 / 纯数字的条目无需翻译，扫描时直接标记，避免干扰进度与审校
+        no_text = [e.id for e in ws.pending_entries() if not has_translatable_text(protect(e.original).text)]
+        ws.save_translations([TranslationUpdate(i, None, None, "skipped") for i in no_text])
         ws.finish_run(run_id, {"entries": {s.name: s.added + s.changed + s.unchanged for s in stats},
                                "match": vars(match), "warnings": len(warnings)})
     reporter.log(

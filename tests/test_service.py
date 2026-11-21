@@ -127,3 +127,13 @@ def test_test_provider(monkeypatch):
     monkeypatch.setattr(service, "client_from_config", lambda p: FakeClient(fail_times=1))
     with pytest.raises(ServiceError, match="测试失败"):
         service.test_provider(ProviderConfig("x", "http://x", "m", api_key="k"))
+
+
+def test_scan_marks_untranslatable_as_skipped(instance_dir, monkeypatch):
+    make_jar(instance_dir / "mods" / "a.jar", {"assets/a/lang/en_us.json": lang({
+        "k.text": "Hello", "k.level": "4000", "k.fmt": "%s*", "k.page": "{@pagebreak}"})})
+    monkeypatch.setattr(service, "http_fetch", lambda url: (_ for _ in ()).throw(OSError("offline")))
+    service.scan(instance_dir)
+    s = service.summary(instance_dir)
+    assert s.by_handler["lang_json"] == {"pending": 1, "skipped": 3}
+    assert s.finished == 3
