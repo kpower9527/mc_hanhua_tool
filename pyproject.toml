@@ -9,13 +9,18 @@ dependencies = [
     "rich>=13",
     "httpx>=0.27",
     "openpyxl>=3.1",
+    "pyside6>=6.12.0",
 ]
 
 [project.scripts]
 mctrans = "mctrans.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pyinstaller>=6.22.3",
+    "pytest>=8",
+    "pytest-qt>=4.5.0",
+]
 
 [build-system]
 requires = ["hatchling"]
