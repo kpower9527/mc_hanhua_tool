@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog,
     QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
     QTabWidget, QVBoxLayout, QWidget,
 )
@@ -78,6 +78,7 @@ class SettingsDialog(QDialog):
             box.setRange(0, 1000)
             box.setDecimals(3)
             box.setSuffix(" 元/百万 tokens")
+        self.thinking = QCheckBox("开启深度思考（明显更慢、更贵，翻译一般不需要；仅对通义千问等支持的服务生效）")
         self.test_button = QPushButton("测试连接")
         self.test_button.clicked.connect(self.test_connection)
         self.test_result = QLabel()
@@ -96,6 +97,7 @@ class SettingsDialog(QDialog):
         form.addRow("", self.key_env_label)
         form.addRow("输入单价", self.price_in)
         form.addRow("输出单价", self.price_out)
+        form.addRow("", self.thinking)
         test_row = QHBoxLayout()
         test_row.addWidget(self.test_button)
         test_row.addWidget(self.test_result, 1)
@@ -127,6 +129,7 @@ class SettingsDialog(QDialog):
             p.api_key = self.api_key.text().strip()
             p.price_input = self.price_in.value()
             p.price_output = self.price_out.value()
+            p.enable_thinking = self.thinking.isChecked()
 
     def _switch_provider(self) -> None:
         self._store_form()
@@ -141,6 +144,8 @@ class SettingsDialog(QDialog):
         self.key_env_label.setText(f"未填写时读取环境变量 {p.api_key_env}" if p.api_key_env else "")
         self.price_in.setValue(p.price_input)
         self.price_out.setValue(p.price_output)
+        self.thinking.setChecked(p.enable_thinking)
+        self.thinking.setEnabled(p.supports_thinking_switch())
         self.test_result.setText("")
 
     def _add_provider(self) -> None:

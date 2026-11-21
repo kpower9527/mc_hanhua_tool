@@ -10,7 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QMenu,
-    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QToolButton,
+    QMessageBox, QPlainTextEdit, QProgressBar, QPushButton, QSizePolicy, QTableWidget, QTableWidgetItem, QToolButton,
     QVBoxLayout, QWidget,
 )
 
@@ -90,11 +90,18 @@ class OverviewPage(QWidget):
             self.mode_box.addItem(label, value)
 
         actions = QGridLayout()
-        actions.addWidget(self.scan_button, 0, 0)
-        actions.addWidget(self.translate_button, 0, 1)
-        actions.addWidget(self.apply_button, 0, 2)
-        actions.addWidget(self.restore_button, 0, 3)
-        actions.addWidget(self.more_button, 0, 4)
+        buttons = (self.scan_button, self.translate_button, self.apply_button, self.restore_button, self.more_button)
+        for col, button in enumerate(buttons):
+            # 所有操作按钮同样大小：工具按钮默认只按文字宽度收缩，这里统一拉伸
+            button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            button.setMinimumHeight(34)
+            actions.addWidget(button, 0, col)
+            actions.setColumnStretch(col, 1)
+        self.translate_button.setToolTip("点击翻译全部待翻译条目；点右侧箭头可以试翻 50 条或只翻某一类")
+        font = self.translate_button.font()
+        font.setBold(True)
+        self.translate_button.setFont(font)
+        self.apply_button.setFont(font)
         options = QHBoxLayout()
         options.addWidget(self.set_lang)
         options.addSpacing(16)
@@ -250,6 +257,10 @@ class OverviewPage(QWidget):
         if self.progress.maximum() == 0:
             self.progress.setMaximum(1)
             self.progress.setValue(1)
+        if name == "预估":
+            self.progress_label.setText("")
+            self._confirm_translate(result)
+            return
         self._describe(name, result)
         self.refresh()
         self.task_done.emit(name)
@@ -290,18 +301,21 @@ class OverviewPage(QWidget):
         if self.root is None or self.runner.busy:
             return False
         if self.ask and ids is None:
-            try:
-                plan = service.plan_translation(self.root, only=only, limit=limit)
-            except service.ServiceError as exc:
-                QMessageBox.warning(self, "无法翻译", str(exc))
-                return False
-            if plan.estimate.entries == 0:
-                QMessageBox.information(self, "翻译", "没有需要翻译的条目。")
-                return False
-            text = service.describe_estimate(plan.estimate, plan.provider)
-            if QMessageBox.question(self, "开始翻译", text + "\n\n开始翻译吗？") != QMessageBox.Yes:
-                return False
+            # 先在后台预估费用（大整合包需要匹配记忆库），完成后再弹确认框，界面不会卡住
+            self._pending_translate = (only, limit)
+            return self._run("预估", service.plan_translation, self.root, None, only, limit)
         return self._run("翻译", service.translate, self.root, None, only, limit, ids)
+
+    def _confirm_translate(self, plan) -> None:
+        only, limit = self._pending_translate
+        if plan.estimate.entries == 0:
+            self.append_log("没有需要翻译的条目。")
+            QMessageBox.information(self, "翻译", "没有需要翻译的条目。")
+            return
+        text = service.describe_estimate(plan.estimate, plan.provider)
+        self.append_log(text)
+        if QMessageBox.question(self, "开始翻译", text + "\n\n开始翻译吗？") == QMessageBox.Yes:
+            self._run("翻译", service.translate, self.root, None, only, limit, None)
 
     def retranslate(self, ids: list[int]) -> bool:
         if self.root is None or self.runner.busy:

@@ -171,3 +171,43 @@ def test_add_invalid_instance(qtbot, tmp_path):
     window.ask = False
     assert window.add_instance_path(tmp_path) is False
     assert window.instance_list.count() == 0
+
+
+def test_translate_preview_runs_in_background(qtbot, pack, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.ask = False
+    with qtbot.waitSignal(window.overview.task_done, timeout=20000):
+        window.add_instance_path(pack)
+    asked = []
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: asked.append(a[2]) or QMessageBox.Yes)
+    window.overview.ask = True
+    # 点击后立即返回（预估在后台进行），预估完成后确认，再自动开始翻译
+    assert window.overview.translate() is True
+    assert window.runner.busy and window.runner.task_name == "预估"
+    with qtbot.waitSignal(window.overview.task_done, timeout=20000) as blocker:
+        pass
+    assert blocker.args == ["翻译"]
+    assert asked and "待翻译 2 条" in asked[0]
+    assert service.summary(pack).finished == 3
+
+
+def test_settings_thinking_switch(qtbot, mctrans_home):
+    dialog = SettingsDialog()
+    qtbot.addWidget(dialog)
+    dialog.edit_box.setCurrentIndex(dialog.edit_box.findData("deepseek"))
+    assert not dialog.thinking.isEnabled()
+    dialog.edit_box.setCurrentIndex(dialog.edit_box.findData("qwen"))
+    assert dialog.thinking.isEnabled() and not dialog.thinking.isChecked()
+    dialog.thinking.setChecked(True)
+    assert dialog.save()[0]
+    assert load_settings().providers["qwen"].enable_thinking is True
+
+
+def test_action_buttons_same_height(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    o = window.overview
+    heights = {b.minimumHeight() for b in (o.scan_button, o.translate_button, o.apply_button, o.restore_button, o.more_button)}
+    assert heights == {34}
