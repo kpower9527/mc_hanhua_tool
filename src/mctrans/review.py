@@ -46,16 +46,14 @@ def export_review(ws: Workspace, path: Path, include_all: bool = False,
     for cell in sheet[1]:
         cell.font = Font(bold=True)
     wrap = Alignment(wrap_text=True, vertical="top")
-    for r in rows:
-        values = [r.id, r.handler, r.source, r.locator, r.original, r.text,
-                  ORIGIN_LABELS.get(r.origin or "", r.origin or ""), STATUS_LABELS.get(r.status, r.status), r.note, None]
-        sheet.append([None] * len(HEADERS))
-        cells = sheet[sheet.max_row]
-        cells[0].value = r.id
-        for i, value in enumerate(values[1:], start=1):
-            _set_text(cells[i], value)
-        cells[4].alignment = wrap
-        cells[5].alignment = wrap
+    for row_no, r in enumerate(rows, start=2):
+        values = [r.handler, r.source, r.locator, r.original, r.text,
+                  ORIGIN_LABELS.get(r.origin or "", r.origin or ""), STATUS_LABELS.get(r.status, r.status), r.note]
+        sheet.cell(row=row_no, column=1, value=r.id)
+        for col, value in enumerate(values, start=2):
+            _set_text(sheet.cell(row=row_no, column=col), value)
+        sheet.cell(row=row_no, column=5).alignment = wrap
+        sheet.cell(row=row_no, column=6).alignment = wrap
     for i, width in enumerate(WIDTHS):
         sheet.column_dimensions[chr(ord("A") + i)].width = width
     sheet.freeze_panes = "A2"
