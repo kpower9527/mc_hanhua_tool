@@ -49,6 +49,12 @@ class ProviderConfig:
     api_key: str = ""
     price_input: float = 0.0  # 元 / 百万 token，仅用于费用预估
     price_output: float = 0.0
+    # 深度思考：qwen3 等模型默认开启，会让翻译慢数倍、费用高数倍，翻译任务一般不需要
+    enable_thinking: bool = False
+
+    def supports_thinking_switch(self) -> bool:
+        """阿里云百炼（DashScope）的 OpenAI 兼容接口支持 enable_thinking 参数。"""
+        return "dashscope" in self.base_url.lower()
 
     def resolve_api_key(self) -> str:
         key = self.api_key or (os.environ.get(self.api_key_env, "") if self.api_key_env else "")
@@ -61,8 +67,8 @@ class ProviderConfig:
 @dataclass
 class Settings:
     default_provider: str = "deepseek"
-    concurrency: int = 4
-    requests_per_minute: int = 60
+    concurrency: int = 8
+    requests_per_minute: int = 0  # 0 为不限；服务端限流时 SDK 会自动退避重试
     batch_size: int = 40
     batch_max_chars: int = 6000
     max_retries: int = 3

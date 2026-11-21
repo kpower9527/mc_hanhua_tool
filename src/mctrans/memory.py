@@ -95,3 +95,14 @@ class Memory:
 
     def __len__(self) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM memory").fetchone()[0]
+
+    def snapshot(self) -> dict[tuple[str, str], tuple[str, bool]]:
+        """一次性读出全部记录：{(namespace, 原文哈希): (译文, 是否已确认)}，用于批量匹配。"""
+        return {
+            (r["namespace"], r["source_hash"]): (r["text"], bool(r["confirmed"]))
+            for r in self.conn.execute("SELECT namespace, source_hash, text, confirmed FROM memory")
+        }
+
+
+def memory_key(namespace: str, original: str) -> tuple[str, str]:
+    return namespace, _hash(original)

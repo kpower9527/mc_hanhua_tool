@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .cfpa.index import CfpaIndex, compatible
-from .memory import Memory, MemoryRecord
+from .memory import Memory, MemoryRecord, memory_key
 from .models import Entry
 from .store import Workspace
 
@@ -40,16 +40,15 @@ def run_matching(ws: Workspace, cfpa: CfpaIndex | None, memory: Memory | None) -
         stats.cfpa_rejected = rejected
 
     if memory is not None:
-        def confirmed(e: Entry) -> str | None:
-            r = memory.lookup(e.namespace, e.original)
-            return r.text if r is not None and r.confirmed else None
-
-        def unconfirmed(e: Entry) -> str | None:
-            r = memory.lookup(e.namespace, e.original)
-            return r.text if r is not None and not r.confirmed else None
-
-        stats.human = ws.fill_from("human", confirmed, NON_HUMAN)
-        stats.memory = ws.fill_from("memory", unconfirmed)
+        # 一次性读入内存再匹配：逐条查询在大整合包上要十几秒
+        snapshot = memory.snapshot()
+        confirmed = {k: text for k, (text, ok) in snapshot.items() if ok}
+        unconfirmed = {k: text for k, (text, ok) in snapshot.items() if not ok}
+        if confirmed:
+            stats.human = ws.fill_from("human", lambda e: confirmed.get(memory_key(e.namespace, e.original)),
+                                       NON_HUMAN)
+        if unconfirmed:
+            stats.memory = ws.fill_from("memory", lambda e: unconfirmed.get(memory_key(e.namespace, e.original)))
     return stats
 
 

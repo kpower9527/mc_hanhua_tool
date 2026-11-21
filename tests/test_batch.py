@@ -96,3 +96,12 @@ def test_accepts_nested_text_objects():
 def test_system_prompt_shows_output_example():
     from mctrans.translate.prompt import SYSTEM_PROMPT
     assert '{"1": "' in SYSTEM_PROMPT
+
+
+def test_thinking_switch_only_for_dashscope():
+    qwen = ProviderConfig("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen3.7-flash", api_key="k")
+    assert client_from_config(qwen).extra_body == {"enable_thinking": False}
+    qwen.enable_thinking = True
+    assert client_from_config(qwen).extra_body == {"enable_thinking": True}
+    deepseek = ProviderConfig("deepseek", "https://api.deepseek.com", "deepseek-chat", api_key="k")
+    assert client_from_config(deepseek).extra_body is None

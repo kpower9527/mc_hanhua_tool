@@ -244,15 +244,20 @@ class Workspace:
     def fill_from(self, origin: str, lookup: Callable[[Entry], str | None],
                   overridable: frozenset[str] = frozenset(), handler: str | None = None) -> int:
         """用外部来源（CFPA、记忆库等）填充译文，遵守优先级：只覆盖待翻译条目和 overridable 中的来源。"""
+        # 在 SQL 中只取候选条目（待翻译、失败、或来源可被覆盖的已完成条目），大整合包可少读十几万行
         sql = (
             "SELECT e.*, t.text AS t_text, t.origin AS t_origin, t.status AS t_status "
             "FROM entries e JOIN translations t ON t.entry_id=e.id "
-            "WHERE e.stale=0 AND t.status != 'confirmed'"
+            "WHERE e.stale=0 AND (t.status IN ('pending', 'failed')"
         )
-        params: tuple = ()
+        params: list = []
+        if overridable:
+            sql += f" OR (t.status='done' AND t.origin IN ({','.join('?' * len(overridable))}))"
+            params.extend(sorted(overridable))
+        sql += ")"
         if handler:
             sql += " AND e.handler=?"
-            params = (handler,)
+            params.append(handler)
         updates: list[TranslationUpdate] = []
         for r in self.conn.execute(sql, params).fetchall():
             status, current = r["t_status"], r["t_origin"]
