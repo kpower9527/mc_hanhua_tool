@@ -166,3 +166,22 @@ def test_origin_counts(ws):
     ws.sync_entries("lang_json", [e("k1", "Gear", "齿轮"), e("k2", "Shaft")])
     ws.apply_builtin()
     assert ws.origin_counts() == {"mod_builtin": 1}
+
+
+def test_review_rows(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear", "齿轮"), e("k2", "Shaft"), e("k3", "Belt"), e("k4", "Cog"), e("k5", "%s")])
+    ws.sync_entries("ftbquests", [Entry("ftbquests", "q", "t1", "ftbquests", "Quest")])
+    ws.apply_builtin()
+    ids = {p.locator: p.id for p in ws.pending_entries()}
+    ws.save_translations([
+        TranslationUpdate(ids["k2"], "轴", "llm", "done", "m"),
+        TranslationUpdate(ids["k3"], "传送带", "human", "confirmed"),
+        TranslationUpdate(ids["k5"], None, None, "skipped"),
+    ])
+    default = [(r.locator, r.status) for r in ws.review_rows()]
+    assert default == [("t1", "pending"), ("k2", "done"), ("k4", "pending")]
+    assert [r.locator for r in ws.review_rows(include_all=True)] == ["t1", "k1", "k2", "k3", "k4"]
+    assert [r.locator for r in ws.review_rows(handlers={"ftbquests"})] == ["t1"]
+    row = ws.get_review_row(ids["k2"])
+    assert (row.original, row.text, row.origin) == ("Shaft", "轴", "llm")
+    assert ws.get_review_row(999999) is None

@@ -72,6 +72,19 @@ class TranslationUpdate:
     note: str | None = None
 
 
+@dataclass
+class ReviewRow:
+    id: int
+    handler: str
+    source: str
+    locator: str
+    original: str
+    text: str | None
+    origin: str | None
+    status: str
+    note: str | None
+
+
 class Workspace:
     def __init__(self, db_path: Path):
         db_path = Path(db_path)
@@ -257,6 +270,32 @@ class Workspace:
             for item in self.translated_items("lang_json")
             if item.entry.locator.startswith(GLOSSARY_PREFIXES)
         ]
+
+    _REVIEW_SQL = (
+        "SELECT e.id, e.handler, e.source, e.locator, e.original, t.text, t.origin, t.status, t.note "
+        "FROM entries e JOIN translations t ON t.entry_id=e.id WHERE e.stale=0 AND t.status != 'skipped'"
+    )
+
+    @staticmethod
+    def _review_row(r: sqlite3.Row) -> ReviewRow:
+        return ReviewRow(r["id"], r["handler"], r["source"], r["locator"], r["original"],
+                         r["text"], r["origin"], r["status"], r["note"])
+
+    def review_rows(self, include_all: bool = False, handlers: set[str] | None = None) -> list[ReviewRow]:
+        sql = self._REVIEW_SQL
+        params: list = []
+        if not include_all:
+            sql += (" AND (t.status IN ('pending', 'failed') OR (t.status='done' AND t.origin IN ('llm', 'memory'))"
+                    " OR t.note IS NOT NULL)")
+        if handlers:
+            sql += f" AND e.handler IN ({','.join('?' * len(handlers))})"
+            params.extend(sorted(handlers))
+        sql += " ORDER BY e.handler, e.source, e.id"
+        return [self._review_row(r) for r in self.conn.execute(sql, params)]
+
+    def get_review_row(self, entry_id: int) -> ReviewRow | None:
+        row = self.conn.execute(self._REVIEW_SQL + " AND e.id=?", (entry_id,)).fetchone()
+        return self._review_row(row) if row else None
 
     def status_counts(self) -> dict[str, int]:
         rows = self.conn.execute(
