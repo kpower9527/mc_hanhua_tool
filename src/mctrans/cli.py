@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -18,6 +19,17 @@ app.add_typer(review_app, name="review")
 console = Console()
 
 MAX_WARNINGS_SHOWN = 20
+
+
+def main() -> None:
+    """命令行入口。中文 Windows 控制台默认为 GBK，遇到无法编码的字符时替换为 ? 而不是崩溃。"""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(errors="replace")
+            except (ValueError, OSError):
+                pass
+    app(prog_name="mctrans")
 
 InstanceArg = Annotated[
     Path, typer.Argument(help="游戏实例目录（含 mods/ 的那一层）", exists=True, file_okay=False, resolve_path=True)

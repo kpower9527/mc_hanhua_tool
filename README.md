@@ -2,13 +2,27 @@
 
 把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册、KubeJS 与 CraftTweaker 脚本中的提示文本，以及按规则指定的配置文本，支持 MC 1.12.2 与 1.16 及以上。
 
-## 安装
+## 图形界面版（推荐）
+
+1. 解压 `mctrans-<版本>-windows.zip`，双击 `mctrans\mctrans.exe`
+2. 点「设置」，选择翻译服务（DeepSeek 或通义千问）并填写 API Key，可以点「测试连接」确认
+3. 点「添加整合包…」，选择实例目录（包含 `mods` 文件夹的那一层），会自动扫描
+4. 在「概览」页点「翻译」（下拉菜单可以先试翻 50 条，或只翻某一类内容），完成后点「应用到游戏」
+5. 在「审校」页可以筛选、搜索并直接修改译文，改完点「应用到游戏」生效；随时可以点「还原」撤销所有修改
+
+同一目录下的 `mctrans-cli.exe` 是命令行版，用法与下文相同（把 `uv run mctrans` 换成 `mctrans-cli`）。
+
+自己构建：`uv run python packaging/build.py`，产物在 `dist/`。
+
+## 命令行版安装
 
 需要 [uv](https://docs.astral.sh/uv/)。
 
 ```
 uv sync
 ```
+
+图形界面也可以直接用 `uv run mctrans-gui` 启动。
 
 ## 配置 API Key
 

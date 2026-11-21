@@ -232,7 +232,7 @@ def quick_estimate(root: Path, provider: str | None = None) -> TranslationPlan |
 def describe_estimate(est: Estimate, pcfg: ProviderConfig) -> str:
     return (f"待翻译 {est.entries} 条（去重后 {est.units} 条），预计 {est.requests} 次请求，"
             f"输入约 {est.input_tokens:,} tokens、输出约 {est.output_tokens:,} tokens，"
-            f"使用 {pcfg.name}/{pcfg.model} 预计费用约 ¥{est.cost:.2f}（按配置单价估算，以官网为准）")
+            f"使用 {pcfg.name}/{pcfg.model} 预计费用约 {est.cost:.2f} 元（按配置单价估算，以官网为准）")
 
 
 def translate(root: Path, provider: str | None = None, only=None, limit: int | None = None, ids=None,

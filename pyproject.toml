@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mctrans = "mctrans.cli:app"
+mctrans = "mctrans.cli:main"
 mctrans-gui = "mctrans.gui.app:main"
 
 [dependency-groups]
