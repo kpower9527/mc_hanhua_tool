@@ -108,3 +108,70 @@ def test_rescan_after_apply_reads_original(lang_pack):
     pointer_path(lang_pack).write_text('{"manifest": ".mctrans/backups/r1/manifest.json"}', encoding="utf-8")
     _, entries = extract(lang_pack)
     assert next(e for e in entries if e.locator == "quest.01.title").existing_zh is None
+
+
+INLINE_CHAPTER = """{
+\tfilename: "create"
+\ttitle: "Create"
+\tquests: [
+\t\t{
+\t\t\tid: "01"
+\t\t\ttitle: "&6Mechanical Plough"
+\t\t\tsubtitle: "{atm9.quest.subtitle}"
+\t\t\tdescription: [
+\t\t\t\t"The &6Plough&r works."
+\t\t\t\t""
+\t\t\t\t"Second line"
+\t\t\t]
+\t\t\ttasks: [{ id: "02", type: "item", item: "create:shaft", title: "Get a Shaft" }]
+\t\t\tx: 1.0d
+\t\t}
+\t]
+}
+"""
+
+
+@pytest.fixture
+def inline_pack(instance_dir):
+    q = "config/ftbquests/quests"
+    put(instance_dir, f"{q}/chapters/create.snbt", INLINE_CHAPTER)
+    put(instance_dir, f"{q}/chapter_groups.snbt", '{\n\tchapter_groups: [{ id: "G1", title: "Tech" }]\n}\n')
+    put(instance_dir, f"{q}/data.snbt", '{\n\ttitle: "My Quests"\n\tversion: 13\n}\n')
+    return instance_dir
+
+
+def test_extract_inline(inline_pack):
+    _, entries = extract(inline_pack)
+    got = [(e.source.rsplit("/", 1)[1], e.locator, e.original) for e in entries]
+    assert got == [
+        ("data.snbt", "title", "My Quests"),
+        ("chapter_groups.snbt", "chapter_groups[0].title", "Tech"),
+        ("create.snbt", "title", "Create"),
+        ("create.snbt", "quests[0].title", "&6Mechanical Plough"),
+        ("create.snbt", "quests[0].description[0]", "The &6Plough&r works."),
+        ("create.snbt", "quests[0].description[2]", "Second line"),
+        ("create.snbt", "quests[0].tasks[0].title", "Get a Shaft"),
+    ]
+    assert entries[3].context == "create.snbt#quests[0].title"
+
+
+def test_write_inline_replaces_only_text(inline_pack):
+    src = "config/ftbquests/quests/chapters/create.snbt"
+
+    def it(locator, text):
+        return TranslatedItem(Entry("ftbquests", src, locator, "ftbquests", "x"), text, "llm", "done")
+
+    sink = OutputSink(inline_pack)
+    FtbQuestsHandler().write([
+        it("quests[0].title", "&6动力犁"),
+        it("quests[0].description[2]", "第二行"),
+        it("title", "Create"),  # 与原文相同，不替换
+    ], sink)
+    out = sink.instance_files[src].decode("utf-8")
+    assert out == INLINE_CHAPTER.replace('"&6Mechanical Plough"', '"&6动力犁"').replace('"Second line"', '"第二行"')
+
+
+def test_lang_format_takes_precedence_over_inline(inline_pack):
+    put(inline_pack, f"{LANG}/en_us.snbt", '{\n\tquest.01.title: "From lang"\n}\n')
+    _, entries = extract(inline_pack)
+    assert [e.source for e in entries] == [LANG_SOURCE]

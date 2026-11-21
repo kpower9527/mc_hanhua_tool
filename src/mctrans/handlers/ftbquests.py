@@ -7,7 +7,7 @@ from typing import Iterator
 from ..applied import read_original
 from ..instance import Instance
 from ..models import Entry, TranslatedItem
-from ..snbt import SNBTError, dump_lang, parse, to_lang_value
+from ..snbt import SNBTError, SString, dump_lang, parse, replace_spans, to_lang_value
 from .base import Handler, OutputSink
 
 QUESTS_DIR = "config/ftbquests/quests"
@@ -16,6 +16,35 @@ ZH_FILE = f"{LANG_DIR}/zh_cn.snbt"
 LANG_SOURCE = "ftbquests:lang"
 NAMESPACE = "ftbquests"
 LINE_RE = re.compile(r"^(.*)\[(\d+)\]$")
+INLINE_KEYS = frozenset({"title", "subtitle", "description", "hover"})
+LANG_KEY_RE = re.compile(r"^\{[A-Za-z0-9_.:-]+\}$")
+
+
+def inline_files(root: Path) -> list[str]:
+    quests = Path(root) / QUESTS_DIR
+    files = [quests / "data.snbt", quests / "chapter_groups.snbt"]
+    files += sorted((quests / "chapters").glob("*.snbt"))
+    files += sorted((quests / "reward_tables").glob("*.snbt"))
+    return [p.relative_to(root).as_posix() for p in files if p.is_file()]
+
+
+def walk_texts(node, path: str = "") -> Iterator[tuple[str, SString]]:
+    """遍历 SNBT 树，产出 (结构路径, 字符串节点)，只包含文本字段。"""
+    if isinstance(node, dict):
+        for key, value in node.items():
+            p = f"{path}.{key}" if path else key
+            if key in INLINE_KEYS:
+                if isinstance(value, SString):
+                    yield p, value
+                elif isinstance(value, list):
+                    for i, x in enumerate(value):
+                        if isinstance(x, SString):
+                            yield f"{p}[{i}]", x
+            else:
+                yield from walk_texts(value, p)
+    elif isinstance(node, list):
+        for i, x in enumerate(node):
+            yield from walk_texts(x, f"{path}[{i}]")
 
 
 def _parse_file(root: Path, rel: str, warnings: list[str]):
@@ -125,9 +154,34 @@ class FtbQuestsHandler(Handler):
         ordered.update({k: v for k, v in out.items() if k not in ordered})
         sink.add_instance_file(ZH_FILE, dump_lang(ordered).encode("utf-8"))
 
-    # ---- 旧版：文本内嵌在章节文件中（Task 4 实现）----
+    # ---- 旧版：文本内嵌在章节文件中 ----
     def _extract_inline(self, root: Path) -> Iterator[Entry]:
-        return iter(())
+        for rel in inline_files(root):
+            tree = _parse_file(root, rel, self.warnings)
+            if tree is None:
+                continue
+            filename = rel.rsplit("/", 1)[-1]
+            for path, node in walk_texts(tree):
+                text = node.value
+                if not text.strip() or LANG_KEY_RE.match(text.strip()):
+                    continue
+                yield Entry(handler=self.name, source=rel, locator=path, namespace=NAMESPACE,
+                            original=text, context=f"{filename}#{path}")
 
     def _write_inline(self, items: list[TranslatedItem], sink: OutputSink) -> None:
-        return None
+        by_source: dict[str, list[TranslatedItem]] = {}
+        for it in items:
+            by_source.setdefault(it.entry.source, []).append(it)
+        for rel, group in sorted(by_source.items()):
+            data = read_original(sink.root, rel)
+            if data is None:
+                continue
+            text = data.decode("utf-8-sig")
+            spans = dict(walk_texts(parse(text)))
+            replacements = [
+                (spans[it.entry.locator].start, spans[it.entry.locator].end, it.text)
+                for it in group
+                if it.entry.locator in spans and spans[it.entry.locator].value != it.text
+            ]
+            if replacements:
+                sink.add_instance_file(rel, replace_spans(text, replacements).encode("utf-8"))
