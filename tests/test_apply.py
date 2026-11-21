@@ -210,3 +210,24 @@ def test_whole_file_handler_goes_to_fill_pack(instance_dir, mixed_ws, monkeypatc
     report = apply(instance_dir, mixed_ws, "1.20.1", mode=MODE_I18N)
     assert report.packs == {FILL_FILE: 1}
     assert WholeFileHandler.seen == [(["k.cfpa", "k.human", "k.llm", "k.mem"], instance_dir)]
+
+
+from mctrans.output.apply import default_packs, pack_id
+
+
+def test_pack_id_by_version():
+    assert pack_id("1.20.1", "x.zip") == "file/x.zip"
+    assert pack_id("1.12.2", "x.zip") == "x.zip"
+    assert i18n_pack_id("1.12.2") == "Minecraft-Mod-Language-Modpack-Converted-1.12.2.zip"
+    assert default_packs("1.12.2") == [] and default_packs("1.16.5") == ["vanilla"]
+
+
+def test_apply_legacy_version(instance_dir, ws):
+    (instance_dir / "options.txt").write_text("lang:en_us\n", encoding="utf-8")
+    apply(instance_dir, ws, "1.12.2", set_lang=True)
+    text = (instance_dir / "options.txt").read_text(encoding="utf-8")
+    assert read_packs(text) == ["mctrans-zh_cn.zip"] and "lang:zh_cn" in text
+    files = read_zip(instance_dir / "resourcepacks" / "mctrans-zh_cn.zip")
+    assert json.loads(files["pack.mcmeta"])["pack"]["pack_format"] == 3
+    restore(instance_dir)
+    assert read_packs((instance_dir / "options.txt").read_text(encoding="utf-8")) == []

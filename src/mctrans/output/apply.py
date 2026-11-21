@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..applied import pointer_path
+from ..mcversion import parse_version
 from ..handlers import all_handlers
 from ..handlers.base import OutputSink
 from ..store import Workspace
@@ -61,8 +62,17 @@ class Outputs:
     entries: int
 
 
+def pack_id(mc_version: str, file_name: str) -> str:
+    """options.txt 中的资源包 ID：1.13 起带 file/ 前缀。"""
+    return f"file/{file_name}" if parse_version(mc_version) >= (1, 13, 0) else file_name
+
+
+def default_packs(mc_version: str) -> list[str]:
+    return ["vanilla"] if parse_version(mc_version) >= (1, 13, 0) else []
+
+
 def i18n_pack_id(mc_version: str) -> str:
-    return f"file/Minecraft-Mod-Language-Modpack-Converted-{mc_version}.zip"
+    return pack_id(mc_version, f"Minecraft-Mod-Language-Modpack-Converted-{mc_version}.zip")
 
 
 def resolve_mode(mode: str, has_i18nupdatemod: bool) -> str:
@@ -142,13 +152,14 @@ def apply(root: Path, ws: Workspace, mc_version: str, mode: str = MODE_STANDALON
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
             manifest["created"].append({"path": f"resourcepacks/{name}", "hash": _sha256(data)})
-            manifest["options"]["packs"].append(f"file/{name}")
+            manifest["options"]["packs"].append(pack_id(mc_version, name))
+        defaults = default_packs(mc_version)
         if mode == MODE_STANDALONE and PACK_FILE in outputs.packs:
-            text = add_pack_top(text, PACK_ID)
+            text = add_pack_top(text, pack_id(mc_version, PACK_FILE), defaults)
         elif mode == MODE_I18N and outputs.packs:
-            below = [f"file/{FILL_FILE}"] if FILL_FILE in outputs.packs else []
-            above = [f"file/{FIX_FILE}"] if FIX_FILE in outputs.packs else []
-            text = place_around(text, i18n_pack_id(mc_version), below, above)
+            below = [pack_id(mc_version, FILL_FILE)] if FILL_FILE in outputs.packs else []
+            above = [pack_id(mc_version, FIX_FILE)] if FIX_FILE in outputs.packs else []
+            text = place_around(text, i18n_pack_id(mc_version), below, above, defaults)
         if set_lang:
             manifest["options"]["lang_set"] = True
             manifest["options"]["lang_before"] = get_option(text, "lang")

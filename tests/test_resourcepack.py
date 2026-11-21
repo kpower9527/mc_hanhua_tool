@@ -15,9 +15,14 @@ def test_pack_format(version, fmt):
     assert pack_format_for(version) == fmt
 
 
+@pytest.mark.parametrize("version, fmt", [("1.12.2", 3), ("1.10.2", 2), ("1.7.10", 1), ("1.14.4", 4), ("1.15.2", 5)])
+def test_pack_format_legacy(version, fmt):
+    assert pack_format_for(version) == fmt
+
+
 def test_pack_format_too_old():
-    with pytest.raises(ValueError, match="1.16"):
-        pack_format_for("1.12.2")
+    with pytest.raises(ValueError):
+        pack_format_for("1.5.2")
 
 
 def test_mcmeta_old_version():

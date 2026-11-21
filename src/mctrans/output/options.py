@@ -49,9 +49,15 @@ def read_packs(text: str) -> list[str] | None:
     return _parse_list(get_option(text, PACKS_KEY))
 
 
-def add_pack_top(text: str, pack_id: str) -> str:
-    packs = read_packs(text) or ["vanilla"]
-    packs = [p for p in packs if p != pack_id] + [pack_id]
+def _current_packs(text: str, default_packs: list[str] | None) -> list[str]:
+    packs = read_packs(text)
+    if packs is None:
+        packs = ["vanilla"] if default_packs is None else list(default_packs)
+    return packs
+
+
+def add_pack_top(text: str, pack_id: str, default_packs: list[str] | None = None) -> str:
+    packs = [p for p in _current_packs(text, default_packs) if p != pack_id] + [pack_id]
     return set_option(text, PACKS_KEY, _dump_list(packs))
 
 
@@ -64,10 +70,11 @@ def remove_packs(text: str, pack_ids: list[str]) -> str:
     return text
 
 
-def place_around(text: str, anchor: str, below: list[str], above: list[str]) -> str:
+def place_around(text: str, anchor: str, below: list[str], above: list[str],
+                 default_packs: list[str] | None = None) -> str:
     """把 below 放在 anchor 紧下方、above 放在紧上方（列表越靠后优先级越高）。"""
     ours = set(below) | set(above)
-    packs = [p for p in (read_packs(text) or ["vanilla"]) if p not in ours]
+    packs = [p for p in _current_packs(text, default_packs) if p not in ours]
     if anchor not in packs:
         packs.append(anchor)
     i = packs.index(anchor)

@@ -52,3 +52,8 @@ def test_place_around_existing_anchor_keeps_others():
     assert read_packs(out) == ["vanilla", "file/fill.zip", ANCHOR, "file/other.zip"]
     out = place_around(text, ANCHOR, [], ["file/fix.zip"])
     assert read_packs(out) == ["vanilla", "file/fill.zip", ANCHOR, "file/fix.zip", "file/other.zip"]
+
+
+def test_default_packs_for_legacy():
+    assert read_packs(add_pack_top("", "mctrans-zh_cn.zip", default_packs=[])) == ["mctrans-zh_cn.zip"]
+    assert read_packs(place_around("", "A.zip", ["fill.zip"], [], default_packs=[])) == ["fill.zip", "A.zip"]

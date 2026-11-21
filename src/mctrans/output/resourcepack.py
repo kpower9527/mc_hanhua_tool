@@ -8,7 +8,8 @@ from ..mcversion import parse_version
 
 # (最低版本, pack_format)，参考 Minecraft Wiki 的 pack format 列表
 PACK_FORMATS: list[tuple[tuple[int, int, int], int]] = [
-    ((1, 16, 0), 5), ((1, 16, 2), 6), ((1, 17, 0), 7), ((1, 18, 0), 8),
+    ((1, 6, 0), 1), ((1, 9, 0), 2), ((1, 11, 0), 3), ((1, 13, 0), 4), ((1, 15, 0), 5),
+    ((1, 16, 2), 6), ((1, 17, 0), 7), ((1, 18, 0), 8),
     ((1, 19, 0), 9), ((1, 19, 3), 12), ((1, 19, 4), 13), ((1, 20, 0), 15),
     ((1, 20, 2), 18), ((1, 20, 3), 22), ((1, 20, 5), 32), ((1, 21, 0), 34),
     ((1, 21, 2), 42), ((1, 21, 4), 46), ((1, 21, 5), 55), ((1, 21, 6), 63),
@@ -24,7 +25,7 @@ def pack_format_for(mc_version: str) -> int:
         if v >= min_version:
             fmt = f
     if fmt is None:
-        raise ValueError(f"不支持的 Minecraft 版本：{mc_version}（当前仅支持 1.16 及以上）")
+        raise ValueError(f"不支持的 Minecraft 版本：{mc_version}（仅支持 1.6 及以上）")
     return fmt
 
 
