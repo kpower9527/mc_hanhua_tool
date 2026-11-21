@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Callable
 
@@ -46,6 +46,7 @@ class TranslateReport:
     failed: int = 0
     skipped: int = 0
     requests: int = 0
+    cancelled: bool = False
 
 
 @dataclass
@@ -115,7 +116,8 @@ class RateLimiter:
 
 def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settings: EngineSettings,
                     on_progress: Callable[[int], None] | None = None,
-                    entries: list[Entry] | None = None) -> TranslateReport:
+                    entries: list[Entry] | None = None,
+                    should_stop: Callable[[], bool] | None = None) -> TranslateReport:
     report = TranslateReport()
     groups, skipped = group_units(ws.pending_entries() if entries is None else entries)
     if skipped:
@@ -132,32 +134,48 @@ def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settin
         limiter.acquire()
         return translate_batch(client, batch, group.namespace, kinds[group.handler], glossary)
 
+    workers = max(1, settings.concurrency)
     for _attempt in range(settings.max_retries + 1):
-        if not pending:
+        if not pending or report.cancelled:
             break
         failed: dict[int, tuple[Group, list[Unit]]] = {}
-        with ThreadPoolExecutor(max_workers=max(1, settings.concurrency)) as pool:
-            futures = {pool.submit(job, g, b): (g, b) for g, b in pending}
-            for fut in as_completed(futures):
-                group, batch = futures[fut]
-                report.requests += 1
-                updates: list[TranslationUpdate] = []
-                done = 0
-                for unit, result in zip(batch, fut.result()):
-                    if result.text is not None:
-                        updates.extend(
-                            TranslationUpdate(i, result.text, "llm", "done", client.model, result.note)
-                            for i in unit.entry_ids
-                        )
-                        done += len(unit.entry_ids)
-                    else:
-                        last_error[id(unit)] = result.error or "未知错误"
-                        failed.setdefault(id(group), (group, []))[1].append(unit)
-                if updates:
-                    ws.save_translations(updates)
-                report.translated += done
-                if on_progress and done:
-                    on_progress(done)
+        queue = list(pending)
+        in_flight: dict = {}
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            def submit_more() -> None:
+                # 滑动窗口：同时在途的批次不超过并发数，取消后不再提交新批次
+                while queue and len(in_flight) < workers and not report.cancelled:
+                    g, b = queue.pop(0)
+                    in_flight[pool.submit(job, g, b)] = (g, b)
+
+            submit_more()
+            while in_flight:
+                finished, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+                for fut in finished:
+                    group, batch = in_flight.pop(fut)
+                    report.requests += 1
+                    updates: list[TranslationUpdate] = []
+                    done = 0
+                    for unit, result in zip(batch, fut.result()):
+                        if result.text is not None:
+                            updates.extend(
+                                TranslationUpdate(i, result.text, "llm", "done", client.model, result.note)
+                                for i in unit.entry_ids
+                            )
+                            done += len(unit.entry_ids)
+                        else:
+                            last_error[id(unit)] = result.error or "未知错误"
+                            failed.setdefault(id(group), (group, []))[1].append(unit)
+                    if updates:
+                        ws.save_translations(updates)
+                    report.translated += done
+                    if on_progress and done:
+                        on_progress(done)
+                if should_stop is not None and should_stop():
+                    report.cancelled = True
+                submit_more()
+        if report.cancelled:
+            return report  # 已完成的已保存，其余条目保持待翻译
         batch_size = max(1, batch_size // 4)
         pending = [
             (g, b) for g, us in failed.values()

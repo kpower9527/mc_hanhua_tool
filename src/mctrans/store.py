@@ -297,6 +297,32 @@ class Workspace:
         row = self.conn.execute(self._REVIEW_SQL + " AND e.id=?", (entry_id,)).fetchone()
         return self._review_row(row) if row else None
 
+    def requeue(self, ids: list[int]) -> int:
+        """把指定条目重置为待翻译（包括已确认的条目，用于用户主动要求重新机翻）。"""
+        with self.conn:
+            cur = self.conn.executemany(
+                "UPDATE translations SET status='pending', note=NULL, updated_at=? WHERE entry_id=?",
+                [(_now(), i) for i in ids],
+            )
+            return cur.rowcount
+
+    def handler_status_counts(self) -> dict[str, dict[str, int]]:
+        out: dict[str, dict[str, int]] = {}
+        rows = self.conn.execute(
+            "SELECT e.handler, t.status, COUNT(*) AS n FROM entries e JOIN translations t ON t.entry_id=e.id "
+            "WHERE e.stale=0 GROUP BY e.handler, t.status ORDER BY MIN(e.id)"
+        )
+        for r in rows:
+            out.setdefault(r["handler"], {})[r["status"]] = r["n"]
+        return out
+
+    def last_run(self, command: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT finished_at FROM runs WHERE command=? AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1",
+            (command,),
+        ).fetchone()
+        return row["finished_at"] if row else None
+
     def status_counts(self) -> dict[str, int]:
         rows = self.conn.execute(
             "SELECT t.status, COUNT(*) AS n FROM entries e JOIN translations t ON t.entry_id=e.id "

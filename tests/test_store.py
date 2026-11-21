@@ -185,3 +185,18 @@ def test_review_rows(ws):
     row = ws.get_review_row(ids["k2"])
     assert (row.original, row.text, row.origin) == ("Shaft", "轴", "llm")
     assert ws.get_review_row(999999) is None
+
+
+def test_requeue_counts_and_last_run(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear"), e("k2", "Shaft")])
+    ws.sync_entries("ftbquests", [Entry("ftbquests", "q", "t1", "ftbquests", "Quest")])
+    ids = {p.locator: p.id for p in ws.pending_entries()}
+    ws.save_translations([TranslationUpdate(ids["k1"], "齿轮", "human", "confirmed"),
+                          TranslationUpdate(ids["k2"], "轴", "llm", "done", "m")])
+    assert ws.handler_status_counts() == {"lang_json": {"confirmed": 1, "done": 1}, "ftbquests": {"pending": 1}}
+    assert ws.requeue([ids["k1"], ids["k2"]]) == 2
+    assert ws.handler_status_counts()["lang_json"] == {"pending": 2}
+    assert ws.last_run("scan") is None
+    run_id = ws.start_run("scan", {})
+    ws.finish_run(run_id, {})
+    assert ws.last_run("scan") is not None

@@ -131,3 +131,13 @@ def test_run_translation_with_explicit_entries(ws):
     report = run_translation(ws, FakeClient(), Glossary(), FAST, entries=subset)
     assert report.translated == 1
     assert [p.locator for p in ws.pending_entries()] == ["k2"]
+
+
+def test_run_translation_can_be_cancelled(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear"), e("k2", "Shaft"), e("k3", "Belt")])
+    calls = []
+    settings = EngineSettings(batch_size=1, batch_max_chars=6000, concurrency=1, requests_per_minute=0, max_retries=2)
+    report = run_translation(ws, FakeClient(), Glossary(), settings,
+                             on_progress=calls.append, should_stop=lambda: len(calls) >= 1)
+    assert report.cancelled and report.translated == 1 and report.failed == 0
+    assert ws.status_counts() == {"done": 1, "pending": 2}
