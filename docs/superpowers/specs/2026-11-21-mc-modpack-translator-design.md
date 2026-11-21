@@ -315,8 +315,8 @@ class Handler:
 ### 9.1 验证结论（2026-11-21）
 
 1. **I18nUpdateMod**：生成 `resourcepacks/Minecraft-Mod-Language-Modpack-Converted-<MC版本>.zip`。options.txt 中已有该 ID 时不调整顺序；没有时追加到最上层。因此 `apply` 预先写入该 ID 并在其上下放置修正包和补全包即可稳定控制顺序（NeoForge 运行时激活仅在首次注册时调整顺序，需进游戏确认）
-2. **Patchouli**：待计划 3 验证
-3. **新版 FTB Quests 语言文件**：待计划 3 验证
+2. **Patchouli**：1.20.1 与 1.21.x 均通过客户端资源管理器加载 `assets/` 下的手册内容，资源包可覆盖；每个文件先找当前语言、找不到回退 en_us。`data/` 下的手册无法用资源包覆盖，暂不支持
+3. **FTB Quests**：1.20.1 及更早版本文本内嵌在章节文件中；1.21.1 使用 `lang/<locale>.snbt`，缺失键回退 en_us。附属 mod Lang Splitter 额外支持 `lang/<locale>/**/*.snbt` 拆分文件。实现见计划 3
 4. **CFPA 发布**：`autobuild` 滚动发布，地址固定，资源包与 md5 文件命名见计划 2。包内只有 zh_cn，没有 en_us，因此第 4 节"英文原文不一致时不采用"改为"参数签名不一致时不采用"，"全量术语表"改为使用当前整合包已匹配到的译文
 
 ## 10. 错误处理

@@ -1,6 +1,6 @@
 # mctrans：Minecraft 整合包自动汉化工具
 
-把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前版本支持 mod 语言文件，MC 1.16 及以上。
+把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册，MC 1.16 及以上。
 
 ## 安装
 
@@ -76,6 +76,19 @@ GitHub 访问慢时，可以在配置中把 `cfpa_base_url` 改为镜像地址�
 - `mctrans-zh_cn-fix.zip`（修正包）：只包含人工确认的译文，放在 I18nUpdateMod 资源包**之上**
 
 可以用 `--mode standalone` 或 `--mode i18nupdate` 强制指定模式。
+
+### 任务书与手册
+
+- **FTB Quests**：1.21 及以上版本生成 `config/ftbquests/quests/lang/zh_cn.snbt`（保留整合包原有中文，只补缺失的部分，兼容 FTB Quests Lang Splitter）；1.20.1 及更早版本直接替换章节文件里的文本，修改前自动备份
+- **Patchouli 手册**：为没有中文的条目生成 `zh_cn` 文件，写入资源包；放在 `data/` 下的旧式手册暂不支持
+
+抽样试翻，先看看效果和费用：
+
+```
+uv run mctrans translate <实例目录> --only ftbquests --limit 50
+```
+
+注意：装有 Lang Splitter 时，游戏启动后会重写 `zh_cn.snbt`，此时 `restore` 会跳过这个文件（提示"应用后被改动过"），需要时手动删除即可。
 
 ### 实例目录
 
