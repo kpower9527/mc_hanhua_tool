@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import io
 import json
-import re
 import zipfile
+
+from ..mcversion import parse_version
 
 # (最低版本, pack_format)，参考 Minecraft Wiki 的 pack format 列表
 PACK_FORMATS: list[tuple[tuple[int, int, int], int]] = [
@@ -16,15 +17,8 @@ PACK_FORMATS: list[tuple[tuple[int, int, int], int]] = [
 MAX_FORMAT = 9999
 
 
-def _parse_version(version: str) -> tuple[int, int, int]:
-    nums = [int(n) for n in re.findall(r"\d+", version)[:3]]
-    while len(nums) < 3:
-        nums.append(0)
-    return nums[0], nums[1], nums[2]
-
-
 def pack_format_for(mc_version: str) -> int:
-    v = _parse_version(mc_version)
+    v = parse_version(mc_version)
     fmt = None
     for min_version, f in PACK_FORMATS:
         if v >= min_version:
