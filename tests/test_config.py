@@ -65,3 +65,14 @@ def test_api_key_missing():
 def test_unknown_provider():
     with pytest.raises(ConfigError, match="未知的翻译服务"):
         load_settings().provider("nope")
+
+
+def test_cfpa_settings(mctrans_home):
+    s = load_settings()
+    assert s.cfpa_base_url.endswith("/releases/download/autobuild")
+    assert s.cfpa_check_hours == 6
+    mctrans_home.mkdir(parents=True)
+    (mctrans_home / "config.toml").write_text(
+        'cfpa_base_url = "https://mirror.test/cfpa"\ncfpa_check_hours = 1\n', encoding="utf-8")
+    s = load_settings()
+    assert s.cfpa_base_url == "https://mirror.test/cfpa" and s.cfpa_check_hours == 1

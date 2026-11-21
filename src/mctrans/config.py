@@ -5,6 +5,8 @@ import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
+from .cfpa.cache import DEFAULT_BASE_URL as CFPA_DEFAULT_BASE_URL
+
 DEFAULT_PROVIDERS: dict[str, dict] = {
     "deepseek": {
         "base_url": "https://api.deepseek.com",
@@ -29,6 +31,8 @@ SETTING_KEYS = (
     "batch_size",
     "batch_max_chars",
     "max_retries",
+    "cfpa_base_url",
+    "cfpa_check_hours",
 )
 
 
@@ -62,6 +66,8 @@ class Settings:
     batch_size: int = 40
     batch_max_chars: int = 6000
     max_retries: int = 3
+    cfpa_base_url: str = CFPA_DEFAULT_BASE_URL
+    cfpa_check_hours: float = 6.0
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
 
     def provider(self, name: str | None = None) -> ProviderConfig:
