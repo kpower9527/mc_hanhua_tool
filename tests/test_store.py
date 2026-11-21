@@ -138,3 +138,31 @@ def test_runs(ws):
     ws.finish_run(run_id, {"added": 2})
     row = ws.conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
     assert row["command"] == "scan" and row["finished_at"] is not None
+
+
+def test_fill_from_pending_and_overridable(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear"), e("k2", "Shaft"), e("k3", "Belt", "传送带")])
+    ws.apply_builtin()
+    ids = {p.locator: p.id for p in ws.pending_entries()}
+    ws.save_translations([TranslationUpdate(ids["k2"], "机翻", "llm", "done", "m")])
+    table = {"Gear": "齿轮", "Shaft": "传动杆", "Belt": "皮带"}
+    n = ws.fill_from("cfpa", lambda en: table.get(en.original), frozenset({"llm", "memory"}))
+    assert n == 2  # k1 待翻译、k2 机翻可覆盖；k3 是 mod 自带，不可覆盖
+    texts = {i.entry.locator: (i.text, i.origin) for i in ws.translated_items()}
+    assert texts == {"k1": ("齿轮", "cfpa"), "k2": ("传动杆", "cfpa"), "k3": ("传送带", "mod_builtin")}
+    assert ws.fill_from("cfpa", lambda en: table.get(en.original), frozenset({"llm"})) == 0  # 幂等
+
+
+def test_fill_from_skips_confirmed_and_handler_filter(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear")])
+    ws.sync_entries("other", [Entry("other", "f", "k9", "a", "Gear")])
+    (eid,) = [p.id for p in ws.pending_entries() if p.locator == "k1"]
+    ws.save_translations([TranslationUpdate(eid, "人工齿轮", "human", "confirmed")])
+    assert ws.fill_from("cfpa", lambda en: "齿轮", frozenset({"human"}), handler="lang_json") == 0
+    assert ws.fill_from("memory", lambda en: "齿轮", handler="other") == 1
+
+
+def test_origin_counts(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear", "齿轮"), e("k2", "Shaft")])
+    ws.apply_builtin()
+    assert ws.origin_counts() == {"mod_builtin": 1}

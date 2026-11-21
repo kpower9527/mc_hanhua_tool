@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from .models import Entry, TranslatedItem
 
@@ -228,6 +228,29 @@ class Workspace:
             for r in self.conn.execute(sql, params)
         ]
 
+    def fill_from(self, origin: str, lookup: Callable[[Entry], str | None],
+                  overridable: frozenset[str] = frozenset(), handler: str | None = None) -> int:
+        """用外部来源（CFPA、记忆库等）填充译文，遵守优先级：只覆盖待翻译条目和 overridable 中的来源。"""
+        sql = (
+            "SELECT e.*, t.text AS t_text, t.origin AS t_origin, t.status AS t_status "
+            "FROM entries e JOIN translations t ON t.entry_id=e.id "
+            "WHERE e.stale=0 AND t.status != 'confirmed'"
+        )
+        params: tuple = ()
+        if handler:
+            sql += " AND e.handler=?"
+            params = (handler,)
+        updates: list[TranslationUpdate] = []
+        for r in self.conn.execute(sql, params).fetchall():
+            status, current = r["t_status"], r["t_origin"]
+            if not (status in ("pending", "failed") or (status == "done" and current in overridable)):
+                continue
+            text = lookup(self._entry(r))
+            if not text or (status == "done" and current == origin and r["t_text"] == text):
+                continue
+            updates.append(TranslationUpdate(r["id"], text, origin, "done"))
+        return self.save_translations(updates)
+
     def glossary_pairs(self) -> list[tuple[str, str]]:
         return [
             (item.entry.original, item.text)
@@ -241,6 +264,13 @@ class Workspace:
             "WHERE e.stale=0 GROUP BY t.status"
         )
         return {r["status"]: r["n"] for r in rows}
+
+    def origin_counts(self) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT t.origin, COUNT(*) AS n FROM entries e JOIN translations t ON t.entry_id=e.id "
+            "WHERE e.stale=0 AND t.status IN ('done', 'confirmed') GROUP BY t.origin"
+        )
+        return {r["origin"]: r["n"] for r in rows}
 
     # ---- runs ----
     def start_run(self, command: str, params: dict) -> int:
