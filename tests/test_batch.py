@@ -77,3 +77,22 @@ def test_same_as_original_is_noted():
 def test_client_from_config():
     c = client_from_config(ProviderConfig("deepseek", "https://api.deepseek.com", "deepseek-chat", api_key="sk-x"))
     assert isinstance(c, OpenAICompatClient) and c.model == "deepseek-chat"
+
+
+class NestedClient:
+    """模拟模型照搬输入结构：{"1": {"text": "译文"}}。"""
+    model = "nested"
+
+    def complete(self, system, user):
+        items = json.loads(user.split(INPUT_MARKER, 1)[1])
+        return json.dumps({k: {"text": "译" + v["text"]} for k, v in items.items()}, ensure_ascii=False)
+
+
+def test_accepts_nested_text_objects():
+    res = translate_batch(NestedClient(), units("Shaft", "Use %s"), "ns", "k", Glossary())
+    assert [r.text for r in res] == ["译Shaft", "译Use %s"]
+
+
+def test_system_prompt_shows_output_example():
+    from mctrans.translate.prompt import SYSTEM_PROMPT
+    assert '{"1": "' in SYSTEM_PROMPT

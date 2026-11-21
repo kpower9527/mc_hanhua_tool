@@ -52,6 +52,8 @@ def translate_batch(client: LLMClient, units: list[Unit], namespace: str, kind: 
     results: list[UnitResult] = []
     for i, (u, m) in enumerate(zip(units, masks), 1):
         value = obj.get(str(i))
+        if isinstance(value, dict):  # 部分模型会照搬输入结构：{"1": {"text": "译文"}}
+            value = value.get("text")
         if not isinstance(value, str) or not value.strip():
             results.append(UnitResult(None, "缺少译文"))
             continue
