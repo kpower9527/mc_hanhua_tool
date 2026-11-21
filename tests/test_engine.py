@@ -113,3 +113,21 @@ def test_estimate():
     assert (est.entries, est.units, est.requests) == (2, 1, 1)
     assert est.input_tokens > 0 and est.output_tokens > 0
     assert est.cost == round(est.input_tokens / 1e6 * 2.0 + est.output_tokens / 1e6 * 8.0, 4)
+
+
+from mctrans.translate.engine import select_entries
+
+
+def test_select_entries():
+    entries = [e("k1", "A"), Entry("ftbquests", "s", "q1", "ftbquests", "Quest"), e("k2", "B")]
+    assert select_entries(entries, None, None) == entries
+    assert [x.locator for x in select_entries(entries, {"ftbquests"}, None)] == ["q1"]
+    assert [x.locator for x in select_entries(entries, None, 2)] == ["k1", "q1"]
+
+
+def test_run_translation_with_explicit_entries(ws):
+    ws.sync_entries("lang_json", [e("k1", "Gear"), e("k2", "Shaft")])
+    subset = ws.pending_entries()[:1]
+    report = run_translation(ws, FakeClient(), Glossary(), FAST, entries=subset)
+    assert report.translated == 1
+    assert [p.locator for p in ws.pending_entries()] == ["k2"]

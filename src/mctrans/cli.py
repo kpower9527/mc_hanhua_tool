@@ -20,7 +20,7 @@ from .memory import Memory
 from .output.apply import ApplyError, apply as apply_outputs, resolve_mode, restore as restore_outputs
 from .store import Workspace
 from .translate.client import client_from_config
-from .translate.engine import EngineSettings, estimate, run_translation
+from .translate.engine import EngineSettings, estimate, run_translation, select_entries
 from .translate.glossary import build_glossary, load_user_glossary
 
 app = typer.Typer(help="Minecraft 整合包自动汉化工具", no_args_is_help=True, add_completion=False)
@@ -33,6 +33,8 @@ InstanceArg = Annotated[
 ]
 ProviderOpt = Annotated[Optional[str], typer.Option("--provider", "-p", help="翻译服务：deepseek / qwen / 自定义")]
 ModeOpt = Annotated[str, typer.Option("--mode", help="输出模式：auto / standalone / i18nupdate")]
+OnlyOpt = Annotated[Optional[list[str]], typer.Option("--only", help="只翻译指定类别，可重复：lang_json / ftbquests / patchouli")]
+LimitOpt = Annotated[Optional[int], typer.Option("--limit", help="最多翻译多少条（抽样试翻、控制费用）")]
 
 
 def _fail(message: str) -> None:
@@ -129,7 +131,8 @@ def do_scan(root: Path, mc_version: str | None, use_cfpa: bool = True, offline: 
         console.print(f"共 {len(warnings)} 条警告，完整列表见 {log}")
 
 
-def do_translate(root: Path, provider: str | None, dry_run: bool, yes: bool) -> None:
+def do_translate(root: Path, provider: str | None, dry_run: bool, yes: bool,
+                 only: list[str] | None = None, limit: int | None = None) -> None:
     try:
         settings = load_settings()
         pcfg = settings.provider(provider)
@@ -140,7 +143,7 @@ def do_translate(root: Path, provider: str | None, dry_run: bool, yes: bool) -> 
     with ws:
         with Memory.default() as memory:
             run_matching(ws, None, memory)
-        entries = ws.pending_entries()
+        entries = select_entries(ws.pending_entries(), set(only) if only else None, limit)
         est = estimate(entries, engine_settings, pcfg.price_input, pcfg.price_output)
         console.print(
             f"待翻译 {est.entries} 条（去重后 {est.units} 条），预计 {est.requests} 次请求，"
@@ -161,7 +164,7 @@ def do_translate(root: Path, provider: str | None, dry_run: bool, yes: bool) -> 
                       TimeRemainingColumn(), console=console) as progress:
             task = progress.add_task("翻译中", total=est.entries)
             report = run_translation(ws, client, glossary, engine_settings,
-                                     on_progress=lambda n: progress.advance(task, n))
+                                     on_progress=lambda n: progress.advance(task, n), entries=entries)
         ws.finish_run(run_id, vars(report))
         with Memory.default() as memory:
             remember_translations(ws, memory)
@@ -205,9 +208,10 @@ def scan(instance: InstanceArg,
 @app.command()
 def translate(instance: InstanceArg, provider: ProviderOpt = None,
               dry_run: Annotated[bool, typer.Option("--dry-run", help="只预估费用，不调用 API")] = False,
-              yes: Annotated[bool, typer.Option("--yes", "-y", help="跳过确认")] = False):
+              yes: Annotated[bool, typer.Option("--yes", "-y", help="跳过确认")] = False,
+              only: OnlyOpt = None, limit: LimitOpt = None):
     """翻译待处理的条目（可中断，再次运行会续跑）。"""
-    do_translate(instance, provider, dry_run, yes)
+    do_translate(instance, provider, dry_run, yes, only, limit)
 
 
 @app.command("apply")
@@ -253,8 +257,8 @@ def run(instance: InstanceArg,
         provider: ProviderOpt = None,
         set_lang: Annotated[bool, typer.Option("--set-lang", help="同时把游戏语言设为简体中文")] = False,
         yes: Annotated[bool, typer.Option("--yes", "-y", help="跳过确认")] = False,
-        mode: ModeOpt = "auto"):
+        mode: ModeOpt = "auto", only: OnlyOpt = None, limit: LimitOpt = None):
     """一键执行：扫描 → 翻译 → 应用。"""
     do_scan(instance, mc_version)
-    do_translate(instance, provider, dry_run=False, yes=yes)
+    do_translate(instance, provider, dry_run=False, yes=yes, only=only, limit=limit)
     do_apply(instance, set_lang, dry_run=False, mode=mode)

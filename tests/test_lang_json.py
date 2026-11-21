@@ -16,7 +16,7 @@ def extract(root):
 
 
 def test_registry():
-    assert [h.name for h in all_handlers()] == ["lang_json"]
+    assert [h.name for h in all_handlers()] == ["lang_json", "ftbquests", "patchouli"]
     assert isinstance(get_handler("lang_json"), LangJsonHandler)
     with pytest.raises(KeyError):
         get_handler("nope")

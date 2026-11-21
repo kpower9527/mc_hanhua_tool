@@ -74,6 +74,12 @@ def group_units(entries: list[Entry]) -> tuple[list[Group], list[int]]:
     return [Group(h, ns, list(us.values())) for (h, ns), us in groups.items()], skipped
 
 
+def select_entries(entries: list[Entry], only: set[str] | None, limit: int | None) -> list[Entry]:
+    """按处理器筛选并限制条目数（用于抽样翻译、控制费用）。"""
+    chosen = [e for e in entries if not only or e.handler in only]
+    return chosen[:limit] if limit else chosen
+
+
 def make_batches(units: list[Unit], batch_size: int, max_chars: int) -> list[list[Unit]]:
     batches: list[list[Unit]] = []
     current: list[Unit] = []
@@ -108,9 +114,10 @@ class RateLimiter:
 
 
 def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settings: EngineSettings,
-                    on_progress: Callable[[int], None] | None = None) -> TranslateReport:
+                    on_progress: Callable[[int], None] | None = None,
+                    entries: list[Entry] | None = None) -> TranslateReport:
     report = TranslateReport()
-    groups, skipped = group_units(ws.pending_entries())
+    groups, skipped = group_units(ws.pending_entries() if entries is None else entries)
     if skipped:
         ws.save_translations([TranslationUpdate(i, None, None, "skipped") for i in skipped])
         report.skipped = len(skipped)

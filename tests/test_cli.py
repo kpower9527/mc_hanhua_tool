@@ -135,3 +135,35 @@ def test_scan_without_network_warns(instance_dir):
     make_jar(instance_dir / "mods" / "a.jar", {"assets/a/lang/en_us.json": lang({"k": "Hello"})})
     out = invoke("scan", instance_dir).output
     assert "CFPA" in out and "禁止联网" in out
+
+
+def test_quests_and_patchouli_end_to_end(pack):
+    root, fake = pack
+    lang_dir = root / "config" / "ftbquests" / "quests" / "lang"
+    (lang_dir / "en_us").mkdir(parents=True)
+    (lang_dir / "en_us" / "chapter.snbt").write_text(
+        '{\n\tchapter.01.title: "Getting Started"\n\tquest.02.quest_desc: ["Craft a &6Gear&r." ""]\n}\n',
+        encoding="utf-8")
+    (lang_dir / "zh_cn.snbt").write_bytes('{\n\tchapter.01.title: "新手入门"\n}\n'.encode("utf-8"))
+    make_jar(root / "mods" / "guide.jar", {
+        "assets/guide/patchouli_books/book/en_us/entries/intro.json": json.dumps(
+            {"name": "Intro", "pages": [{"type": "patchouli:text", "text": "Welcome to the pack."}]}),
+    })
+    invoke("scan", root)
+    out = invoke("translate", root, "--yes", "--only", "ftbquests", "--limit", "5").output
+    assert "完成：翻译 1 条" in out
+    invoke("translate", root, "--yes")
+    invoke("apply", root)
+    zh = (lang_dir / "zh_cn.snbt").read_text(encoding="utf-8")
+    assert '"新手入门"' in zh and '"译Craft a &6Gear&r."' in zh
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+        page = json.loads(z.read("assets/guide/patchouli_books/book/zh_cn/entries/intro.json"))
+    assert page["name"] == "译Intro"
+    # apply 之后重新扫描：不能把自己写出的译文当成整合包自带中文
+    invoke("scan", root)
+    from mctrans.store import Workspace
+    with Workspace.for_instance(root) as ws:
+        origins = {i.entry.locator: i.origin for i in ws.translated_items("ftbquests")}
+    assert origins == {"chapter.01.title": "mod_builtin", "quest.02.quest_desc[0]": "llm"}
+    invoke("restore", root)
+    assert (lang_dir / "zh_cn.snbt").read_bytes() == '{\n\tchapter.01.title: "新手入门"\n}\n'.encode("utf-8")
