@@ -168,7 +168,8 @@ def test_write_inline_replaces_only_text(inline_pack):
         it("title", "Create"),  # 与原文相同，不替换
     ], sink)
     out = sink.instance_files[src].decode("utf-8")
-    assert out == INLINE_CHAPTER.replace('"&6Mechanical Plough"', '"&6动力犁"').replace('"Second line"', '"第二行"')
+    original = (inline_pack / src).read_bytes().decode("utf-8")  # Windows 上为 CRLF，需原样保留
+    assert out == original.replace('"&6Mechanical Plough"', '"&6动力犁"').replace('"Second line"', '"第二行"')
 
 
 def test_lang_format_takes_precedence_over_inline(inline_pack):
