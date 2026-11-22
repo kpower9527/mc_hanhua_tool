@@ -13,7 +13,7 @@ from pathlib import Path
 from .cfpa.cache import CfpaCache, http_fetch
 from .cfpa.index import CfpaIndex
 from .cfpa.versions import cfpa_assets
-from .config import ConfigError, ProviderConfig, Settings, home_dir, load_settings
+from .config import ConfigError, ProviderConfig, Settings, home_dir, load_settings, matching_extras
 from .handlers import all_handlers
 from .instance import InstanceError, load_instance
 from .match import MatchStats, remember_translations, run_matching
@@ -361,17 +361,20 @@ def is_applied(root: Path) -> bool:
     return apply_mod.is_applied(root)
 
 
-def export_patch(root: Path, out_dir: Path, mode: str = "auto", extras_dir: Path | None = None):
-    """extras_dir 为 None 时使用设置里的「补丁附加文件目录」。"""
-    if extras_dir is None:
-        configured = load_settings().patch_extras_dir.strip()
-        extras_dir = Path(configured) if configured else None
+def export_patch(root: Path, out_dir: Path, mode: str = "auto", extras_dirs=None):
+    """extras_dirs 为 None 时按设置里的附加文件规则，选出与整合包版本、加载器匹配的目录。"""
     with _workspace(root) as ws:
+        mc_version, loader = ws.get_meta("mc_version"), ws.get_meta("loader")
+        if extras_dirs is None:
+            extras_dirs = [Path(r.dir) for r in matching_extras(load_settings().patch_extras, mc_version, loader)]
         try:
             chosen = apply_mod.resolve_mode(mode, ws.get_meta("has_i18nupdatemod") == "1")
-            return patch_mod.export_patch(root, ws, ws.get_meta("mc_version"), out_dir, chosen, extras_dir)
+            report = patch_mod.export_patch(root, ws, mc_version, out_dir, chosen, extras_dirs)
         except (apply_mod.ApplyError, ValueError) as exc:
             raise ServiceError(str(exc)) from exc
+    report.extra_dirs = [str(d) for d in extras_dirs]
+    report.loader = loader or ""
+    return report
 
 
 def review_export(root: Path, path: Path, include_all: bool = False, handlers=None) -> int:

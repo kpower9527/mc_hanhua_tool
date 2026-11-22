@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import service
-from ..config import ConfigError, ProviderConfig, load_settings
+from ..config import EXTRA_LOADERS, ConfigError, ExtraRule, ProviderConfig, load_settings
 from ..handlers.config_text import RULES_FILE, parse_rules
 from ..config import home_dir
 from ..settings_io import save_settings, save_user_glossary
@@ -244,30 +244,82 @@ class SettingsDialog(QDialog):
     def _patch_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        hint = QLabel("导出汉化补丁时，把这个文件夹里的所有文件按相同的目录结构一并放进补丁，"
-                      "玩家运行「一键安装汉化.bat」时会一起复制到整合包。\n\n"
-                      "例如要附带一个 mod：在文件夹里建 mods 子文件夹，把 jar 放进去。留空则不附加。\n\n"
-                      "注意：mod 要与整合包的 Minecraft 版本和加载器（Forge / Fabric / NeoForge）匹配；"
-                      "更换 mod 版本时，旧版 jar 不会从玩家的整合包里自动删除，"
-                      "建议保持文件名不变（覆盖安装），避免出现两个版本导致无法启动。")
+        intro = QLabel("导出汉化补丁时，按整合包的 Minecraft 版本和加载器选出匹配的规则，"
+                       "把对应文件夹里的文件按相同目录结构放进补丁，一键安装时一起复制到整合包。"
+                       "例如附带 mod：在文件夹里建 mods 子文件夹，把 jar 放进去。")
+        intro.setWordWrap(True)
+        self.extras_table = QTableWidget(0, 3)
+        self.extras_table.setHorizontalHeaderLabels(["MC 版本", "加载器", "附加文件目录"])
+        header = self.extras_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        self.extras_table.verticalHeader().setVisible(False)
+        for rule in self.settings.patch_extras:
+            self.add_extra_row(rule.version, rule.loader, rule.dir)
+        buttons = QHBoxLayout()
+        add = QPushButton("添加规则…")
+        add.clicked.connect(self._add_extra)
+        browse = QPushButton("更改目录…")
+        browse.clicked.connect(self._browse_extra)
+        remove = QPushButton("删除选中")
+        remove.clicked.connect(self._remove_extra_rows)
+        for b in (add, browse, remove):
+            buttons.addWidget(b)
+        buttons.addStretch(1)
+        hint = QLabel("· 版本留空 = 所有版本；写 1.20 匹配 1.20 和 1.20.x；写 1.20.1 只匹配 1.20.1。\n"
+                      "· 同时匹配多条规则时都会附加，同名文件以更具体的规则（写了版本、加载器的）为准。\n"
+                      "· 更换 mod 版本时，旧版 jar 不会从玩家的整合包里自动删除，"
+                      "建议保持文件名不变，避免出现两个版本导致无法启动。")
         hint.setWordWrap(True)
-        row = QHBoxLayout()
-        self.extras_dir = QLineEdit(self.settings.patch_extras_dir)
-        self.extras_dir.setPlaceholderText("留空：不附加文件")
-        browse = QPushButton("浏览…")
-        browse.clicked.connect(self._browse_extras)
-        row.addWidget(self.extras_dir, 1)
-        row.addWidget(browse)
-        layout.addWidget(QLabel("补丁附加文件目录"))
-        layout.addLayout(row)
+        layout.addWidget(intro)
+        layout.addWidget(self.extras_table, 1)
+        layout.addLayout(buttons)
         layout.addWidget(hint)
-        layout.addStretch(1)
         return page
 
-    def _browse_extras(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "选择补丁附加文件目录", self.extras_dir.text())
+    def add_extra_row(self, version: str, loader: str, folder: str) -> None:
+        row = self.extras_table.rowCount()
+        self.extras_table.insertRow(row)
+        item = QTableWidgetItem(version)
+        item.setToolTip("留空 = 所有版本")
+        self.extras_table.setItem(row, 0, item)
+        box = QComboBox()
+        for key, label in EXTRA_LOADERS.items():
+            box.addItem(label, key)
+        index = box.findData(loader.lower())
+        box.setCurrentIndex(index if index >= 0 else 0)
+        self.extras_table.setCellWidget(row, 1, box)
+        self.extras_table.setItem(row, 2, QTableWidgetItem(folder))
+
+    def _add_extra(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "选择这条规则的附加文件目录")
         if path:
-            self.extras_dir.setText(path)
+            self.add_extra_row("", "", path)
+            self.extras_table.editItem(self.extras_table.item(self.extras_table.rowCount() - 1, 0))
+
+    def _browse_extra(self) -> None:
+        row = self.extras_table.currentRow()
+        if row < 0:
+            return
+        item = self.extras_table.item(row, 2)
+        path = QFileDialog.getExistingDirectory(self, "选择附加文件目录", item.text() if item else "")
+        if path:
+            self.extras_table.setItem(row, 2, QTableWidgetItem(path))
+
+    def _remove_extra_rows(self) -> None:
+        for row in sorted({i.row() for i in self.extras_table.selectedIndexes()}, reverse=True):
+            self.extras_table.removeRow(row)
+
+    def extra_rules(self) -> list[ExtraRule]:
+        rules = []
+        for row in range(self.extras_table.rowCount()):
+            version = (self.extras_table.item(row, 0).text() if self.extras_table.item(row, 0) else "").strip()
+            folder = (self.extras_table.item(row, 2).text() if self.extras_table.item(row, 2) else "").strip()
+            loader = self.extras_table.cellWidget(row, 1).currentData()
+            if folder:
+                rules.append(ExtraRule(dir=folder, version=version, loader=loader))
+        return rules
 
     # ---- 术语表 ----
     def _glossary_tab(self) -> QWidget:
@@ -341,10 +393,11 @@ class SettingsDialog(QDialog):
         s.max_retries = self.retries.value()
         s.cfpa_base_url = self.cfpa_url.text().strip()
         s.cfpa_check_hours = self.cfpa_hours.value()
-        extras = self.extras_dir.text().strip()
-        if extras and not Path(extras).is_dir():
-            return False, f"补丁附加文件目录不存在：{extras}"
-        s.patch_extras_dir = extras
+        rules = self.extra_rules()
+        for rule in rules:
+            if not Path(rule.dir).is_dir():
+                return False, f"附加文件目录不存在：{rule.dir}"
+        s.patch_extras = rules
         save_settings(s)
         save_user_glossary(home_dir() / "glossary.tsv", self.glossary_pairs())
         rules_path = home_dir() / RULES_FILE

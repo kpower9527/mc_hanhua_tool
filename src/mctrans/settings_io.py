@@ -25,6 +25,10 @@ def dumps_settings(settings: Settings) -> str:
     lines = ["# mctrans 配置文件（由图形界面写入，也可以手动编辑）"]
     for key in SETTING_KEYS:
         lines.append(f"{key} = {_toml_value(getattr(settings, key))}")
+    for rule in settings.patch_extras:
+        lines += ["", "[[patch_extra]]  # 导出补丁时附加的文件（版本留空 = 所有版本）",
+                  f"version = {_toml_value(rule.version)}", f"loader = {_toml_value(rule.loader)}",
+                  f"dir = {_toml_value(rule.dir)}"]
     provider_fields = [f.name for f in fields(ProviderConfig) if f.name != "name"]
     for name, provider in settings.providers.items():
         lines.append("")

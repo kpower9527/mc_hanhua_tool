@@ -2,7 +2,7 @@
 
 玩家双击「一键安装汉化.bat」（或把一个或多个整合包文件夹拖到它上面）：
 1. 补丁已解压在整合包目录里时，原地启用；否则选择整合包目录，把补丁文件复制过去（覆盖前备份）。
-   双击运行时，装完一个可以接着选下一个整合包；脚本不改动补丁目录本身，可以反复使用。
+   脚本不改动补丁目录本身，可以反复运行（每次装一个整合包，也可以一次拖入多个文件夹）。
 2. 修改 options.txt：把汉化资源包放到资源包列表最上面（配合 I18nUpdateMod 时补全包放在 CFPA 包下面），
    语言设为简体中文
 bat 只含 ASCII，真正的逻辑在 UTF-8（带 BOM）的 ps1 里，避免 cmd 代码页导致中文乱码。
@@ -169,15 +169,8 @@ if ($Targets) {{
 }} elseif (Test-InPlace $Here) {{
     if (Install-Patch $Here) {{ $ok++ }} else {{ $failed++ }}
 }} else {{
-    $start = ''
-    while ($true) {{
-        $t = Select-Instance $start
-        if ($t -eq '') {{ break }}
-        if (Install-Patch $t) {{ $ok++ }} else {{ $failed++ }}
-        $start = Split-Path -Parent $t
-        $more = Read-Host '还要安装到其他整合包吗？输入 Y 继续选择，直接回车结束'
-        if ($more -notmatch '^[yY]') {{ break }}
-    }}
+    $t = Select-Instance ''
+    if ($t -ne '') {{ if (Install-Patch $t) {{ $ok++ }} else {{ $failed++ }} }}
 }}
 
 if ($ok -eq 0 -and $failed -eq 0) {{ Write-Host '已取消，没有安装到任何整合包。'; exit 1 }}

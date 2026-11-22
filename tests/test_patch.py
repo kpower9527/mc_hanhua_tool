@@ -162,7 +162,7 @@ def test_export_with_extras(instance_dir, ws, tmp_path):
     (extras / "resourcepacks").mkdir()
     (extras / "resourcepacks" / "maikuai-zh_cn.zip").write_bytes(b"conflict")
     out = tmp_path / "p"
-    report = export_patch(instance_dir, ws, "1.20.1", out, MODE_STANDALONE, extras)
+    report = export_patch(instance_dir, ws, "1.20.1", out, MODE_STANDALONE, [extras])
     assert report.extras == ["mods/ad.jar"]
     assert report.extra_conflicts == ["resourcepacks/maikuai-zh_cn.zip"]
     assert "mods/ad.jar" in report.files
@@ -174,7 +174,7 @@ def test_export_with_extras(instance_dir, ws, tmp_path):
 
 def test_export_missing_extras_dir(instance_dir, ws, tmp_path):
     with pytest.raises(ApplyError):
-        export_patch(instance_dir, ws, "1.20.1", tmp_path / "p", MODE_STANDALONE, tmp_path / "nope")
+        export_patch(instance_dir, ws, "1.20.1", tmp_path / "p", MODE_STANDALONE, [tmp_path / "nope"])
 
 
 @needs_ps
@@ -183,8 +183,20 @@ def test_installer_copies_extra_mod(instance_dir, ws, tmp_path):
     (extras / "mods").mkdir(parents=True)
     (extras / "mods" / "ad.jar").write_bytes(b"jar")
     patch = tmp_path / "补丁"
-    export_patch(instance_dir, ws, "1.20.1", patch, MODE_STANDALONE, extras)
+    export_patch(instance_dir, ws, "1.20.1", patch, MODE_STANDALONE, [extras])
     game = make_game(tmp_path, "game")
     run_installer(patch, game)
     assert (game / "mods" / "ad.jar").read_bytes() == b"jar"
     assert not (patch / "options.txt").exists()
+
+
+def test_extras_later_dir_wins(instance_dir, ws, tmp_path):
+    general, specific = tmp_path / "g", tmp_path / "s"
+    for d, data in ((general, b"old"), (specific, b"new")):
+        (d / "mods").mkdir(parents=True)
+        (d / "mods" / "ad.jar").write_bytes(data)
+    (general / "mods" / "common.txt").write_bytes(b"c")
+    out = tmp_path / "p"
+    report = export_patch(instance_dir, ws, "1.20.1", out, MODE_STANDALONE, [general, specific])
+    assert report.extras == ["mods/ad.jar", "mods/common.txt"]
+    assert (out / "mods" / "ad.jar").read_bytes() == b"new"

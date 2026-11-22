@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,8 @@ class PatchReport:
     includes_cfpa: bool
     extras: list[str] = field(default_factory=list)  # 从附加文件目录复制进补丁的文件
     extra_conflicts: list[str] = field(default_factory=list)  # 与生成的文件重名、未复制的附加文件
+    extra_dirs: list[str] = field(default_factory=list)  # 使用的附加文件目录（由 service 填写）
+    loader: str = ""
 
 
 def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[str], includes_cfpa: bool,
@@ -40,7 +43,7 @@ def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[s
         "一键安装（推荐，Windows）：",
         "  先关闭游戏，然后双击「" + BAT_NAME + "」，按提示选择整合包目录（包含 mods 文件夹的那一层）。",
         "  也可以把一个或多个整合包文件夹直接拖到「" + BAT_NAME + "」上；如果补丁已解压到整合包目录里，直接双击即可。",
-        "  有多个整合包时：装完一个后按提示输入 Y 继续选择下一个；补丁目录本身不会被改动，之后也可以再次运行。",
+        "  补丁目录本身不会被改动，可以再次运行，安装到其他整合包。",
         "  脚本会复制补丁文件（被覆盖的原文件自动备份到 .hanhua-backup 文件夹），",
         "  把汉化资源包放到资源包列表最上面，并把游戏语言设为简体中文。",
         "",
@@ -65,22 +68,27 @@ def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[s
     return "\n".join(lines) + "\n"
 
 
-def _extra_files(extras_dir: Path | None) -> list[tuple[str, Path]]:
-    if extras_dir is None:
-        return []
-    extras_dir = Path(extras_dir)
-    if not extras_dir.is_dir():
-        raise apply_mod.ApplyError(f"补丁附加文件目录不存在：{extras_dir}")
-    return sorted((p.relative_to(extras_dir).as_posix(), p) for p in extras_dir.rglob("*") if p.is_file())
+def _extra_files(extras_dirs: Sequence[Path]) -> list[tuple[str, Path]]:
+    """合并多个附加目录的文件；同一路径以后面的目录为准。"""
+    chosen: dict[str, tuple[str, Path]] = {}
+    for d in extras_dirs:
+        d = Path(d)
+        if not d.is_dir():
+            raise apply_mod.ApplyError(f"补丁附加文件目录不存在：{d}")
+        for p in d.rglob("*"):
+            if p.is_file():
+                rel = p.relative_to(d).as_posix()
+                chosen[rel.lower()] = (rel, p)
+    return sorted(chosen.values())
 
 
 def export_patch(root: Path, ws: Workspace, mc_version: str, out_dir: Path, mode: str,
-                 extras_dir: Path | None = None) -> PatchReport:
-    """extras_dir：附加文件目录（例如放 mods/xxx.jar），其中的文件按相同目录结构一并放进补丁。"""
+                 extras_dirs: Sequence[Path] = ()) -> PatchReport:
+    """extras_dirs：附加文件目录（例如放 mods/xxx.jar），其中的文件按相同目录结构一并放进补丁。"""
     out_dir = Path(out_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise apply_mod.ApplyError(f"输出目录不为空：{out_dir}")
-    extra_files = _extra_files(extras_dir)
+    extra_files = _extra_files(extras_dirs)
     outputs = apply_mod.build_outputs(ws, mode, Path(root))
     files: list[str] = []
     for rel, data in sorted(outputs.instance.instance_files.items()):

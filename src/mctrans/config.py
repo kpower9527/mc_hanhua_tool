@@ -33,8 +33,36 @@ SETTING_KEYS = (
     "max_retries",
     "cfpa_base_url",
     "cfpa_check_hours",
-    "patch_extras_dir",
 )
+
+# 附加文件规则的加载器取值（与 instance.inspect_jars 的结果一致；Quilt 识别为 fabric）
+EXTRA_LOADERS = {"": "任意加载器", "forge": "Forge", "neoforge": "NeoForge", "fabric": "Fabric / Quilt"}
+
+
+@dataclass
+class ExtraRule:
+    """导出补丁时附加文件的规则：整合包版本、加载器都匹配时，把 dir 里的文件放进补丁。
+
+    version 留空匹配所有版本；写 1.20 匹配 1.20 和 1.20.x；loader 留空匹配任意加载器。
+    """
+    dir: str
+    version: str = ""
+    loader: str = ""
+
+    def matches(self, mc_version: str | None, loader: str | None) -> bool:
+        v = self.version.strip()
+        if v and not (mc_version and (mc_version == v or mc_version.startswith(v + "."))):
+            return False
+        return not self.loader or (loader or "").lower() == self.loader.lower()
+
+    def specificity(self) -> tuple[int, int, int]:
+        return (1 if self.version.strip() else 0, len(self.version.strip()), 1 if self.loader else 0)
+
+
+def matching_extras(rules: list[ExtraRule], mc_version: str | None, loader: str | None) -> list[ExtraRule]:
+    """匹配的规则，通用的在前、具体的在后（后面的同名文件覆盖前面的）。"""
+    hits = [r for r in rules if r.dir.strip() and r.matches(mc_version, loader)]
+    return sorted(hits, key=ExtraRule.specificity)
 
 
 class ConfigError(Exception):
@@ -75,7 +103,7 @@ class Settings:
     max_retries: int = 3
     cfpa_base_url: str = CFPA_DEFAULT_BASE_URL
     cfpa_check_hours: float = 6.0
-    patch_extras_dir: str = ""  # 导出补丁时一并放进去的附加文件目录（例如 mods/xxx.jar），留空不附加
+    patch_extras: list[ExtraRule] = field(default_factory=list)  # 导出补丁时按版本附加的文件
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
 
     def provider(self, name: str | None = None) -> ProviderConfig:
@@ -118,4 +146,10 @@ def load_settings(path: Path | None = None) -> Settings:
     for key in SETTING_KEYS:
         if key in data:
             setattr(settings, key, data[key])
+    if data.get("patch_extras_dir"):  # 0.1.8 的单个附加目录 → 通用规则
+        settings.patch_extras.append(ExtraRule(dir=str(data["patch_extras_dir"])))
+    for item in data.get("patch_extra", []):
+        if isinstance(item, dict) and item.get("dir"):
+            settings.patch_extras.append(ExtraRule(dir=str(item["dir"]), version=str(item.get("version", "")),
+                                                   loader=str(item.get("loader", ""))))
     return settings
