@@ -7,13 +7,14 @@ from .ftbquests import FtbQuestsHandler
 from .lang_json import LangJsonHandler
 from .patchouli import PatchouliHandler
 from .scripts import CraftTweakerHandler, KubeJsHandler
+from .structures import StructureTextHandler
 
 __all__ = ["Handler", "OutputSink", "all_handlers", "get_handler"]
 
 
 def all_handlers() -> list[Handler]:
     return [LangJsonHandler(), FtbQuestsHandler(), PatchouliHandler(), BetterQuestingHandler(),
-            KubeJsHandler(), CraftTweakerHandler(), ConfigTextHandler()]
+            KubeJsHandler(), CraftTweakerHandler(), StructureTextHandler(), ConfigTextHandler()]
 
 
 def get_handler(name: str) -> Handler:

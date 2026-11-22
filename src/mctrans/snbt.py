@@ -31,8 +31,9 @@ class Scalar:
 
 
 class _Parser:
-    def __init__(self, text: str):
+    def __init__(self, text: str, escapes: dict[str, str] = DECODE):
         self.s = text
+        self.escapes = escapes
         self.i = 0
         self.n = len(text)
 
@@ -113,8 +114,8 @@ class _Parser:
                     raise self.error("字符串没有闭合")
                 e = self.s[self.i]
                 self.i += 1
-                if e in DECODE:
-                    buf.append(DECODE[e])
+                if e in self.escapes:
+                    buf.append(self.escapes[e])
                 continue
             if c == quote_char:
                 return SString("".join(buf), start, self.i)
@@ -129,8 +130,8 @@ class _Parser:
         return self.s[start:self.i]
 
 
-def parse(text: str):
-    return _Parser(text).parse()
+def parse(text: str, escapes: dict[str, str] = DECODE):
+    return _Parser(text, escapes).parse()
 
 
 def quote(value: str) -> str:
