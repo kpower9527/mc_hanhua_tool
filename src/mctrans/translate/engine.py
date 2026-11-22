@@ -14,6 +14,7 @@ from ..store import TranslationUpdate, Workspace
 from .batch import Unit, UnitResult, translate_batch
 from .client import LLMClient
 from .glossary import Glossary
+from .hints import compact_hint
 from .protect import has_translatable_text, protect
 
 PROMPT_OVERHEAD_TOKENS = 450  # 系统提示词 + 术语表的大致开销
@@ -70,7 +71,7 @@ def group_units(entries: list[Entry]) -> tuple[list[Group], list[int]]:
         units = groups.setdefault((e.handler, e.namespace), {})
         unit = units.get(e.original)
         if unit is None:
-            units[e.original] = Unit(e.original, e.context, [e.id])
+            units[e.original] = Unit(e.original, compact_hint(e.context, e.original, e.namespace), [e.id])
         else:
             unit.entry_ids.append(e.id)
     return [Group(h, ns, list(us.values())) for (h, ns), us in groups.items()], skipped

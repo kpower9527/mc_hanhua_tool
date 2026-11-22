@@ -5,7 +5,7 @@ import re
 
 SYSTEM_PROMPT = """你是专业的 Minecraft 模组本地化译者，负责把英文翻译成简体中文。
 规则：
-1. 输入是一个 JSON 对象，键是编号，值包含 text（原文）和可选的 hint（文本所在位置的键名，用来判断它是物品名、提示还是说明）。
+1. 输入是一个 JSON 对象，键是编号，值包含 text（原文）和可选的 hint（文本所在位置的键名或说明，可能经过精简，用来判断它是物品名、提示还是说明）。
 2. 输出一个 JSON 对象，键与输入完全相同，值直接是对应 text 的中文译文字符串（不要再包一层对象）。不得增加或遗漏任何键。
    例如输入 {"1": {"text": "Iron Plate", "hint": "item.example.iron_plate"}}，输出 {"1": "铁板"}。
 3. 形如 ⟦0⟧、⟦1⟧ 的标记是占位符，必须原样保留在译文中，数量不变，可以按中文语序调整位置。
@@ -23,7 +23,7 @@ def build_user_prompt(namespace: str, kind: str, terms: list[tuple[str, str]],
         lines.append("术语表：")
         lines.extend(f"- {en} → {zh}" for en, zh in terms)
     lines.append(INPUT_MARKER)
-    lines.append(json.dumps(items, ensure_ascii=False, indent=1))
+    lines.append(json.dumps(items, ensure_ascii=False, separators=(",", ":")))
     return "\n".join(lines)
 
 

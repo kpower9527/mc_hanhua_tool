@@ -137,3 +137,12 @@ def test_scan_marks_untranslatable_as_skipped(instance_dir, monkeypatch):
     s = service.summary(instance_dir)
     assert s.by_handler["lang_json"] == {"pending": 1, "skipped": 3}
     assert s.finished == 3
+
+
+def test_describe_usage_mentions_reasoning():
+    from mctrans.config import ProviderConfig
+    from mctrans.service import describe_usage
+    from mctrans.translate.client import Usage
+    p = ProviderConfig(name="qwen", base_url="x", model="m", price_input=0.2, price_output=0.8)
+    text = describe_usage(Usage(requests=2, input_tokens=1_000_000, output_tokens=500_000, reasoning_tokens=400_000), p)
+    assert "深度思考 400,000" in text and "0.60 元" in text

@@ -283,9 +283,24 @@ def translate(root: Path, provider: str | None = None, only=None, limit: int | N
     else:
         reporter.log(f"完成：翻译 {report.translated} 条，失败 {report.failed} 条，"
                      f"跳过（无需翻译）{report.skipped} 条，共 {report.requests} 次请求")
+    usage = getattr(client, "usage", None)
+    if usage is not None and usage.requests:
+        reporter.log(describe_usage(usage, pcfg))
     if report.failed:
         reporter.log("有条目翻译失败，再次翻译会只重试失败的条目", "warn")
     return report
+
+
+def describe_usage(usage, pcfg: ProviderConfig) -> str:
+    """把接口返回的实际用量写成一句话；深度思考产生的推理 token 也按输出计费，单独提示。"""
+    text = (f"实际用量：输入 {usage.input_tokens:,} tokens")
+    if usage.cached_tokens:
+        text += f"（其中命中缓存 {usage.cached_tokens:,}）"
+    text += f"，输出 {usage.output_tokens:,} tokens"
+    if usage.reasoning_tokens:
+        text += f"（其中深度思考 {usage.reasoning_tokens:,}，可在设置中关闭深度思考以节省费用）"
+    text += f"，按配置单价约 {usage.cost(pcfg.price_input, pcfg.price_output):.2f} 元"
+    return text
 
 
 def apply(root: Path, mode: str = "auto", set_lang: bool = False, dry_run: bool = False):
