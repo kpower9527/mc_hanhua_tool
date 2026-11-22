@@ -11,12 +11,13 @@ def test_settings_round_trip(mctrans_home):
     s.concurrency = 8
     s.cfpa_base_url = "https://mirror.example/cfpa"
     s.cfpa_check_hours = 1.5
+    s.patch_extras_dir = 'D:\\广告'
     s.providers["qwen"].api_key = 'sk-"quote"\\back'
     s.providers["qwen"].model = "qwen3.7-flash"
     s.providers["local"] = ProviderConfig("local", "http://localhost:11434/v1", "模型", api_key="x", price_input=0.5)
     save_settings(s)
     t = load_settings()
-    assert t.default_provider == "qwen" and t.concurrency == 8 and t.cfpa_check_hours == 1.5
+    assert t.default_provider == "qwen" and t.concurrency == 8 and t.cfpa_check_hours == 1.5 and t.patch_extras_dir == 'D:\\广告'
     assert t.cfpa_base_url == "https://mirror.example/cfpa"
     assert t.providers["qwen"].api_key == 'sk-"quote"\\back' and t.providers["qwen"].model == "qwen3.7-flash"
     assert t.providers["local"].model == "模型" and t.providers["local"].price_input == 0.5

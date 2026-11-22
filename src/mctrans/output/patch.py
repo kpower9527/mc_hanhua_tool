@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import shutil
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -24,9 +25,12 @@ class PatchReport:
     entries: int
     files: list[str]
     includes_cfpa: bool
+    extras: list[str] = field(default_factory=list)  # 从附加文件目录复制进补丁的文件
+    extra_conflicts: list[str] = field(default_factory=list)  # 与生成的文件重名、未复制的附加文件
 
 
-def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[str], includes_cfpa: bool) -> str:
+def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[str], includes_cfpa: bool,
+            extras: list[str] = ()) -> str:
     lines = [
         "Minecraft 整合包汉化补丁",
         f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}    Minecraft 版本：{mc_version}",
@@ -35,7 +39,8 @@ def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[s
         "",
         "一键安装（推荐，Windows）：",
         "  先关闭游戏，然后双击「" + BAT_NAME + "」，按提示选择整合包目录（包含 mods 文件夹的那一层）。",
-        "  也可以把整合包文件夹直接拖到「" + BAT_NAME + "」上；如果补丁已解压到整合包目录里，直接双击即可。",
+        "  也可以把一个或多个整合包文件夹直接拖到「" + BAT_NAME + "」上；如果补丁已解压到整合包目录里，直接双击即可。",
+        "  有多个整合包时：装完一个后按提示输入 Y 继续选择下一个；补丁目录本身不会被改动，之后也可以再次运行。",
         "  脚本会复制补丁文件（被覆盖的原文件自动备份到 .hanhua-backup 文件夹），",
         "  把汉化资源包放到资源包列表最上面，并把游戏语言设为简体中文。",
         "",
@@ -54,15 +59,28 @@ def _readme(mc_version: str, mode: str, packs: list[str], instance_files: list[s
     lines += ["", "包含的文件："]
     lines += [f"  resourcepacks/{name}" for name in packs]
     lines += [f"  {rel}（覆盖整合包中的同名文件，建议先备份）" for rel in instance_files]
+    lines += [f"  {rel}（附加文件）" for rel in extras]
     if includes_cfpa:
         lines.append(CFPA_NOTICE)
     return "\n".join(lines) + "\n"
 
 
-def export_patch(root: Path, ws: Workspace, mc_version: str, out_dir: Path, mode: str) -> PatchReport:
+def _extra_files(extras_dir: Path | None) -> list[tuple[str, Path]]:
+    if extras_dir is None:
+        return []
+    extras_dir = Path(extras_dir)
+    if not extras_dir.is_dir():
+        raise apply_mod.ApplyError(f"补丁附加文件目录不存在：{extras_dir}")
+    return sorted((p.relative_to(extras_dir).as_posix(), p) for p in extras_dir.rglob("*") if p.is_file())
+
+
+def export_patch(root: Path, ws: Workspace, mc_version: str, out_dir: Path, mode: str,
+                 extras_dir: Path | None = None) -> PatchReport:
+    """extras_dir：附加文件目录（例如放 mods/xxx.jar），其中的文件按相同目录结构一并放进补丁。"""
     out_dir = Path(out_dir)
     if out_dir.exists() and any(out_dir.iterdir()):
         raise apply_mod.ApplyError(f"输出目录不为空：{out_dir}")
+    extra_files = _extra_files(extras_dir)
     outputs = apply_mod.build_outputs(ws, mode, Path(root))
     files: list[str] = []
     for rel, data in sorted(outputs.instance.instance_files.items()):
@@ -79,8 +97,19 @@ def export_patch(root: Path, ws: Workspace, mc_version: str, out_dir: Path, mode
         files.append(f"resourcepacks/{name}")
     includes_cfpa = mode == apply_mod.MODE_STANDALONE and ws.origin_counts().get("cfpa", 0) > 0
     out_dir.mkdir(parents=True, exist_ok=True)
+    reserved = {f.lower() for f in files} | {n.lower() for n in (README_NAME, BAT_NAME, PS1_NAME)}
+    extras: list[str] = []
+    conflicts: list[str] = []
+    for rel, src in extra_files:
+        if rel.lower() in reserved:
+            conflicts.append(rel)
+            continue
+        target = out_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, target)
+        extras.append(rel)
     (out_dir / README_NAME).write_text(
-        _readme(mc_version, mode, pack_names, sorted(outputs.instance.instance_files), includes_cfpa),
+        _readme(mc_version, mode, pack_names, sorted(outputs.instance.instance_files), includes_cfpa, extras),
         encoding="utf-8")
     ids = {name: apply_mod.pack_id(mc_version, name) for name in pack_names}
     if mode == apply_mod.MODE_I18N:
@@ -90,7 +119,9 @@ def export_patch(root: Path, ws: Workspace, mc_version: str, out_dir: Path, mode
     else:
         top, anchor, below, above = [ids[n] for n in pack_names], "", [], []
     script = install_script(top, anchor, below, above, apply_mod.default_packs(mc_version),
-                            [README_NAME, BAT_NAME, PS1_NAME])
+                            [README_NAME, BAT_NAME, PS1_NAME],
+                            sum(1 for rel in extras if rel.lower().startswith("mods/") and rel.lower().endswith(".jar")))
     (out_dir / PS1_NAME).write_bytes(b"\xef\xbb\xbf" + script.replace("\r\n", "\n").replace("\n", "\r\n").encode("utf-8"))
     (out_dir / BAT_NAME).write_bytes(BAT.encode("ascii"))
-    return PatchReport(outputs.entries, sorted(files) + [README_NAME, BAT_NAME, PS1_NAME], includes_cfpa)
+    return PatchReport(outputs.entries, sorted(files) + extras + [README_NAME, BAT_NAME, PS1_NAME], includes_cfpa,
+                       extras, conflicts)

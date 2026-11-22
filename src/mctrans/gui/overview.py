@@ -451,8 +451,13 @@ class OverviewPage(QWidget):
                 self.append_log(f"跳过（应用后被改动过）：{rel}", "warn")
         elif name == "导出补丁":
             self.append_log(f"已导出补丁（译文 {result.entries} 条，文件 {len(result.files)} 个）")
+            if result.extras:
+                self.append_log(f"已附加 {len(result.extras)} 个文件：{'、'.join(result.extras[:5])}"
+                                + ("等" if len(result.extras) > 5 else ""))
+            if result.extra_conflicts:
+                self.append_log(f"以下附加文件与汉化文件重名，未放入：{'、'.join(result.extra_conflicts)}")
             self.append_log("补丁内附「一键安装汉化.bat」：玩家关闭游戏后双击，选择整合包目录，"
-                            "即可复制文件、把汉化包排到资源包最上面并切换为简体中文。")
+                            "即可复制文件、把汉化包排到资源包最上面并切换为简体中文；可连续安装到多个整合包。")
             if result.includes_cfpa:
                 self.append_log("补丁包含 CFPA 社区译文（CC BY-NC-SA 4.0），分发时请保留说明文件，且不得商用", "warn")
 

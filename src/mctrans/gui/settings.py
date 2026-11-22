@@ -1,12 +1,13 @@
-"""设置窗口：翻译服务、运行参数、CFPA、术语表、配置文本规则。"""
+"""设置窗口：翻译服务、运行参数、CFPA、术语表、配置文本规则、导出补丁。"""
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog,
     QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
     QTabWidget, QVBoxLayout, QWidget,
 )
@@ -54,6 +55,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._cfpa_tab(), "CFPA 汉化包")
         tabs.addTab(self._glossary_tab(), "术语表")
         tabs.addTab(self._rules_tab(), "配置文本规则")
+        tabs.addTab(self._patch_tab(), "导出补丁")
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         buttons.button(QDialogButtonBox.Save).setText("保存")
         buttons.button(QDialogButtonBox.Cancel).setText("取消")
@@ -239,6 +241,34 @@ class SettingsDialog(QDialog):
         form.addRow("", hint)
         return page
 
+    def _patch_tab(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        hint = QLabel("导出汉化补丁时，把这个文件夹里的所有文件按相同的目录结构一并放进补丁，"
+                      "玩家运行「一键安装汉化.bat」时会一起复制到整合包。\n\n"
+                      "例如要附带一个 mod：在文件夹里建 mods 子文件夹，把 jar 放进去。留空则不附加。\n\n"
+                      "注意：mod 要与整合包的 Minecraft 版本和加载器（Forge / Fabric / NeoForge）匹配；"
+                      "更换 mod 版本时，旧版 jar 不会从玩家的整合包里自动删除，"
+                      "建议保持文件名不变（覆盖安装），避免出现两个版本导致无法启动。")
+        hint.setWordWrap(True)
+        row = QHBoxLayout()
+        self.extras_dir = QLineEdit(self.settings.patch_extras_dir)
+        self.extras_dir.setPlaceholderText("留空：不附加文件")
+        browse = QPushButton("浏览…")
+        browse.clicked.connect(self._browse_extras)
+        row.addWidget(self.extras_dir, 1)
+        row.addWidget(browse)
+        layout.addWidget(QLabel("补丁附加文件目录"))
+        layout.addLayout(row)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        return page
+
+    def _browse_extras(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "选择补丁附加文件目录", self.extras_dir.text())
+        if path:
+            self.extras_dir.setText(path)
+
     # ---- 术语表 ----
     def _glossary_tab(self) -> QWidget:
         page = QWidget()
@@ -311,6 +341,10 @@ class SettingsDialog(QDialog):
         s.max_retries = self.retries.value()
         s.cfpa_base_url = self.cfpa_url.text().strip()
         s.cfpa_check_hours = self.cfpa_hours.value()
+        extras = self.extras_dir.text().strip()
+        if extras and not Path(extras).is_dir():
+            return False, f"补丁附加文件目录不存在：{extras}"
+        s.patch_extras_dir = extras
         save_settings(s)
         save_user_glossary(home_dir() / "glossary.tsv", self.glossary_pairs())
         rules_path = home_dir() / RULES_FILE

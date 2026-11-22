@@ -33,6 +33,7 @@ SETTING_KEYS = (
     "max_retries",
     "cfpa_base_url",
     "cfpa_check_hours",
+    "patch_extras_dir",
 )
 
 
@@ -74,6 +75,7 @@ class Settings:
     max_retries: int = 3
     cfpa_base_url: str = CFPA_DEFAULT_BASE_URL
     cfpa_check_hours: float = 6.0
+    patch_extras_dir: str = ""  # 导出补丁时一并放进去的附加文件目录（例如 mods/xxx.jar），留空不附加
     providers: dict[str, ProviderConfig] = field(default_factory=dict)
 
     def provider(self, name: str | None = None) -> ProviderConfig:

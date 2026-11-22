@@ -361,11 +361,15 @@ def is_applied(root: Path) -> bool:
     return apply_mod.is_applied(root)
 
 
-def export_patch(root: Path, out_dir: Path, mode: str = "auto"):
+def export_patch(root: Path, out_dir: Path, mode: str = "auto", extras_dir: Path | None = None):
+    """extras_dir 为 None 时使用设置里的「补丁附加文件目录」。"""
+    if extras_dir is None:
+        configured = load_settings().patch_extras_dir.strip()
+        extras_dir = Path(configured) if configured else None
     with _workspace(root) as ws:
         try:
             chosen = apply_mod.resolve_mode(mode, ws.get_meta("has_i18nupdatemod") == "1")
-            return patch_mod.export_patch(root, ws, ws.get_meta("mc_version"), out_dir, chosen)
+            return patch_mod.export_patch(root, ws, ws.get_meta("mc_version"), out_dir, chosen, extras_dir)
         except (apply_mod.ApplyError, ValueError) as exc:
             raise ServiceError(str(exc)) from exc
 
