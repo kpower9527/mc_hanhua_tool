@@ -21,6 +21,7 @@ from .memory import Memory
 from .models import Entry
 from .output import apply as apply_mod
 from .output import patch as patch_mod
+from .respacks import PatchIndex, installed_patches
 from .review import ImportReport, export_review, import_review
 from .store import ReviewRow, TranslationUpdate, Workspace
 from .translate.client import client_from_config
@@ -168,8 +169,12 @@ def scan(root: Path, mc_version: str | None = None, use_cfpa: bool = True, offli
             warnings.extend(handler.warnings)
         reporter.progress(len(handlers), len(handlers))
         index = _load_cfpa(inst, settings, offline, reporter) if use_cfpa else None
+        patches = PatchIndex(installed_patches(inst.root, warnings=warnings))
+        if patches.patches:
+            names = "、".join(p.name for p in patches.patches)
+            reporter.log(f"检测到已安装的汉化补丁：{names}（共 {len(patches):,} 条译文，优先采用）")
         with Memory.default() as memory:
-            match = run_matching(ws, index, memory)
+            match = run_matching(ws, index, memory, patches)
         # 纯符号 / 纯格式码 / 纯数字的条目无需翻译，扫描时直接标记，避免干扰进度与审校
         no_text = [e.id for e in ws.pending_entries() if not has_translatable_text(protect(e.original).text)]
         ws.save_translations([TranslationUpdate(i, None, None, "skipped") for i in no_text])
@@ -179,6 +184,7 @@ def scan(root: Path, mc_version: str | None = None, use_cfpa: bool = True, offli
         f"采用 mod 自带中文 {match.builtin} 条，CFPA 人工译文 {match.cfpa} 条"
         f"（参数不一致、视为过时而跳过 {match.cfpa_rejected} 条），"
         f"记忆库 {match.memory} 条，记忆库中的人工译文 {match.human} 条"
+        + (f"，汉化补丁 {match.respack} 条" if match.respack else "")
     )
     log_path = _write_log(inst.root, "scan", warnings) if warnings else None
     for w in warnings[:20]:
@@ -326,6 +332,22 @@ def apply(root: Path, mode: str = "auto", set_lang: bool = False, dry_run: bool 
                                    set_lang=set_lang, dry_run=dry_run)
         except (apply_mod.ApplyError, ValueError) as exc:
             raise ServiceError(str(exc)) from exc
+
+
+def packs_above_ours(root: Path) -> list[str]:
+    """已应用后，排在 mctrans 汉化包上面的资源包名（为空表示顺序正常）。"""
+    with _workspace(root) as ws:
+        mc_version = ws.get_meta("mc_version")
+    return apply_mod.packs_above_ours(root, mc_version) if mc_version else []
+
+
+def reapply_on_top(root: Path, mode: str = "auto", set_lang: bool = False, mc_version: str | None = None,
+                   reporter: Reporter | None = None):
+    """重新扫描（吸收已安装汉化补丁的译文）后重新应用，把汉化包放回最上面。"""
+    reporter = reporter or Reporter()
+    scan(root, mc_version, reporter=reporter)
+    reporter.log("正在重新应用…")
+    return apply(root, mode, set_lang)
 
 
 def restore(root: Path):

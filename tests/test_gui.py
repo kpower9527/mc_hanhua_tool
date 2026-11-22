@@ -261,3 +261,28 @@ def test_task_panel_states(qtbot, pack):
         o.translate()
     assert o.task_title.text() == "✓ 翻译完成" and o.progress.value() == o.progress.maximum()
     assert window.windowTitle() == window.base_title
+
+
+def test_pack_order_notice(qtbot, pack):
+    from helpers import jar_bytes
+    from mctrans.output.options import read_packs
+
+    service.scan(pack)
+    service.translate(pack)
+    service.apply(pack)
+    (pack / "resourcepacks" / "补丁.zip").write_bytes(
+        jar_bytes({"assets/create/lang/zh_cn.json": lang({"tip.create.y": "传送带"})}))
+    opts = pack / "options.txt"
+    packs = read_packs(opts.read_text(encoding="utf-8")) + ["file/补丁.zip"]
+    opts.write_text("resourcePacks:" + json.dumps(packs, ensure_ascii=False) + "\n", encoding="utf-8")
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.ask = window.overview.ask = False
+    window.add_instance_path(pack)
+    o = window.overview
+    assert o.order_notice.isVisibleTo(window) and "补丁.zip" in o.order_label.text()
+    with qtbot.waitSignal(o.task_done, timeout=20000) as blocker:
+        assert o.reapply_on_top()
+    assert blocker.args == ["重新应用"]
+    assert not o.order_notice.isVisibleTo(window)
+    assert read_packs(opts.read_text(encoding="utf-8"))[-1] == "file/mctrans-zh_cn.zip"

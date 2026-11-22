@@ -13,7 +13,7 @@ from .translate.protect import protect
 
 HEADERS = ["ID", "类别", "文件", "位置", "原文", "译文", "来源", "状态", "备注", "确认"]
 WIDTHS = [8, 12, 40, 30, 60, 60, 10, 10, 24, 8]
-ORIGIN_LABELS = {"mod_builtin": "mod 自带", "cfpa": "CFPA", "memory": "记忆库", "llm": "机翻", "human": "人工"}
+ORIGIN_LABELS = {"mod_builtin": "mod 自带", "cfpa": "CFPA", "respack": "汉化补丁", "memory": "记忆库", "llm": "机翻", "human": "人工"}
 STATUS_LABELS = {"pending": "待翻译", "done": "已完成", "failed": "失败", "confirmed": "已确认"}
 TRUTHY = {"是", "y", "yes", "1", "true", "√", "✓", "x", "确认"}
 GUIDE = [

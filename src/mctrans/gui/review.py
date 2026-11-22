@@ -28,6 +28,8 @@ EDITED_BRUSH = QBrush(QColor(255, 244, 196))
 def short_source(source: str) -> str:
     tail = source.replace("!", "/").rstrip("/")
     parts = [p for p in tail.split("/") if p]
+    if source.startswith("pack:"):
+        return source[5:].split("!", 1)[0]  # pack:<资源包>!assets/... → 资源包名
     if source.startswith("jar:assets/") and len(parts) >= 2:
         return parts[1]  # jar:assets/<命名空间>/lang/... → 命名空间
     return parts[-1] if parts else source

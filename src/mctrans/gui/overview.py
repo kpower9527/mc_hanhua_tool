@@ -150,6 +150,23 @@ class OverviewPage(QWidget):
         more.addAction("打开实例目录", self.open_folder)
         self.more_button.setMenu(more)
 
+        # 汉化包被其他资源包（通常是后装的汉化补丁）压在下面时的提示
+        self.order_notice = QFrame()
+        self.order_notice.setObjectName("notice")
+        self.order_label = QLabel()
+        self.order_label.setWordWrap(True)
+        self.order_button = QPushButton("吸收补丁译文并移到最前")
+        self.order_button.setObjectName("primary")
+        self.order_button.setMinimumHeight(30)
+        self.order_button.setToolTip("重新扫描（读取汉化补丁中的人工译文，优先采用），再重新应用，"
+                                     "把 mctrans 汉化包放回资源包列表最上面")
+        self.order_button.clicked.connect(self.reapply_on_top)
+        notice = QHBoxLayout(self.order_notice)
+        notice.setContentsMargins(12, 8, 12, 8)
+        notice.addWidget(self.order_label, 1)
+        notice.addWidget(self.order_button)
+        self.order_notice.hide()
+
         self.set_lang = QCheckBox("同时把游戏语言设为简体中文")
         self.set_lang.setChecked(True)
         self.mode_box = QComboBox()
@@ -207,6 +224,7 @@ class OverviewPage(QWidget):
         layout.addWidget(self.title)
         layout.addWidget(self.info)
         layout.addWidget(stats_box)
+        layout.addWidget(self.order_notice)
         layout.addLayout(actions)
         layout.addLayout(options)
         layout.addWidget(self.task_panel)
@@ -241,6 +259,7 @@ class OverviewPage(QWidget):
         self.stats.setRowCount(0)
         self.origins.setText("")
         self.estimate.setText("")
+        self.order_notice.hide()
         self.welcome.update_status(service.provider_problem(), self.root is not None)
         self.welcome.setVisible(self.root is None)
         self.content.setVisible(self.root is not None)
@@ -264,6 +283,7 @@ class OverviewPage(QWidget):
                 last = datetime.fromisoformat(summary.last_scan).astimezone().strftime("%Y-%m-%d %H:%M")
             except ValueError:
                 last = summary.last_scan
+        self._check_pack_order()
         self.info.setText(f"{self.root}\nMinecraft {summary.mc_version} · {summary.loader}{i18n}{applied}"
                           f" · 上次扫描 {last}")
         for handler, counts in summary.by_handler.items():
@@ -289,6 +309,20 @@ class OverviewPage(QWidget):
                 self.estimate.setText(service.describe_estimate(plan.estimate, plan.provider))
         self._rebuild_translate_menu()
         self._update_buttons(self.runner.busy)
+
+    def _check_pack_order(self) -> None:
+        try:
+            above = service.packs_above_ours(self.root)
+        except service.ServiceError:
+            above = []
+        if not above:
+            return
+        names = "、".join(above[:3]) + (f" 等 {len(above)} 个" if len(above) > 3 else "")
+        self.order_label.setText(
+            f"⚠ 资源包「{names}」排在 mctrans 汉化包上面，重复的条目会以它为准"
+            "（若它是旧版或不完整的汉化，游戏里会出现过时译文或英文）。\n"
+            "点右侧按钮：先读取其中的汉化译文（人工译文优先采用），再把汉化包移到最前。请先关闭游戏。")
+        self.order_notice.show()
 
     def _rebuild_translate_menu(self) -> None:
         menu = self.translate_menu
@@ -397,7 +431,7 @@ class OverviewPage(QWidget):
         self.refresh()
 
     def _describe(self, name: str, result) -> None:
-        if name == "应用":
+        if name in ("应用", "重新应用"):
             mode = "配合 I18nUpdateMod" if result.mode == "i18nupdate" else "独立资源包"
             self.append_log(f"已应用到游戏（{mode}），写入译文 {result.entries} 条")
             for pack, n in result.packs.items():
@@ -453,6 +487,10 @@ class OverviewPage(QWidget):
 
     def apply(self) -> bool:
         return self._run("应用", service.apply, self.root, self.mode_box.currentData(), self.set_lang.isChecked())
+
+    def reapply_on_top(self) -> bool:
+        return self._run("重新应用", service.reapply_on_top, self.root, self.mode_box.currentData(),
+                         self.set_lang.isChecked(), self.mc_version_override or None)
 
     def restore(self) -> bool:
         if self.ask and QMessageBox.question(self, "还原", "撤销对这个整合包的所有汉化修改吗？") != QMessageBox.Yes:

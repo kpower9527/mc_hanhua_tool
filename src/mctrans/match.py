@@ -7,7 +7,7 @@ from .memory import Memory, MemoryRecord, memory_key
 from .models import Entry
 from .store import Workspace
 
-NON_HUMAN = frozenset({"mod_builtin", "cfpa", "memory", "llm"})
+NON_HUMAN = frozenset({"mod_builtin", "cfpa", "respack", "memory", "llm"})
 
 
 @dataclass
@@ -15,11 +15,13 @@ class MatchStats:
     builtin: int = 0
     cfpa: int = 0
     cfpa_rejected: int = 0
+    respack: int = 0
     human: int = 0
     memory: int = 0
 
 
-def run_matching(ws: Workspace, cfpa: CfpaIndex | None, memory: Memory | None) -> MatchStats:
+def run_matching(ws: Workspace, cfpa: CfpaIndex | None, memory: Memory | None,
+                 patches=None) -> MatchStats:
     stats = MatchStats()
     stats.builtin = ws.apply_builtin()
 
@@ -38,6 +40,17 @@ def run_matching(ws: Workspace, cfpa: CfpaIndex | None, memory: Memory | None) -
 
         stats.cfpa = ws.fill_from("cfpa", from_cfpa, frozenset({"llm", "memory"}), handler="lang_json")
         stats.cfpa_rejected = rejected
+
+    if patches is not None and len(patches):
+        # 整合包里已安装的汉化补丁：专为该整合包制作的人工译文，优先于 mod 自带、CFPA 和机翻
+        def from_patch(e: Entry) -> str | None:
+            zh = patches.lookup(e.namespace, e.locator)
+            if not zh or zh == e.original or not compatible(e.original, zh):
+                return None
+            return zh
+
+        stats.respack = ws.fill_from("respack", from_patch, frozenset({"mod_builtin", "cfpa", "llm", "memory"}),
+                                     handler="lang_json")
 
     if memory is not None:
         # 一次性读入内存再匹配：逐条查询在大整合包上要十几秒

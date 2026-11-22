@@ -58,6 +58,11 @@ QToolButton#primary::menu-button {{
     border-left: 1px solid rgba(255, 255, 255, 0.35);
     width: 26px;
 }}
+QFrame#notice {{
+    border: 1px solid #f9a825;
+    border-radius: 8px;
+    background: rgba(249, 168, 37, 0.12);
+}}
 QFrame#welcome {{
     border: 1px solid rgba(128, 128, 128, 0.35);
     border-radius: 10px;

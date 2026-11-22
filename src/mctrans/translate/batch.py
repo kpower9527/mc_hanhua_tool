@@ -74,7 +74,7 @@ def split_edges(m: Masked) -> tuple[str, str, str]:
 
 def translate_batch(client: LLMClient, units: list[Unit], namespace: str, kind: str,
                     glossary: Glossary, lenient: bool = False) -> list[UnitResult]:
-    masks = [protect(u.original) for u in units]
+    masks = [protect(u.original, glyphs=True) for u in units]
     edges = [split_edges(m) for m in masks]
     items: dict[str, dict[str, str]] = {}
     for i, (u, (_, middle, _)) in enumerate(zip(units, edges), 1):

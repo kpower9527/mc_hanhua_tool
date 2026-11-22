@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-ORIGINS = ("mod_builtin", "cfpa", "memory", "llm", "human")
+ORIGINS = ("mod_builtin", "cfpa", "respack", "memory", "llm", "human")
 STATUSES = ("pending", "done", "failed", "confirmed", "skipped")
 
 

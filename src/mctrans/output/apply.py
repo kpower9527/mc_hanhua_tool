@@ -11,8 +11,9 @@ from ..applied import pointer_path
 from ..mcversion import parse_version
 from ..handlers import all_handlers
 from ..handlers.base import OutputSink
+from ..respacks import PatchIndex, installed_patches, pack_name, read_pack, resolve_pack
 from ..store import Workspace
-from .options import add_pack_top, get_option, place_around, remove_packs, set_option
+from .options import add_pack_top, get_option, place_around, read_packs, remove_packs, set_option
 from .resourcepack import build_pack_zip, pack_mcmeta
 
 MODE_STANDALONE = "standalone"
@@ -27,8 +28,8 @@ PACK_DESCRIPTION = "mctrans 自动汉化"
 
 # 每种模式下各资源包收录哪些来源的译文
 PACK_ORIGINS: dict[str, dict[str, frozenset[str]]] = {
-    MODE_STANDALONE: {PACK_FILE: frozenset({"cfpa", "memory", "llm", "human"})},
-    MODE_I18N: {FILL_FILE: frozenset({"memory", "llm"}), FIX_FILE: frozenset({"human"})},
+    MODE_STANDALONE: {PACK_FILE: frozenset({"cfpa", "respack", "memory", "llm", "human"})},
+    MODE_I18N: {FILL_FILE: frozenset({"memory", "llm"}), FIX_FILE: frozenset({"respack", "human"})},
 }
 INSTANCE_EXCLUDED = frozenset({"mod_builtin"})
 # 整文件处理器的输出位置（配合模式下放在 CFPA 包之下，CFPA 有同名文件时以 CFPA 为准）
@@ -113,10 +114,62 @@ def build_outputs(ws: Workspace, mode: str, root: Path | None = None) -> Outputs
     return Outputs({n: s for n, s in packs.items() if s.pack_files}, instance, count)
 
 
+def skip_patch_files(outputs: Outputs, root: Path) -> None:
+    """已安装的汉化补丁提供的非语言文件（手册等整文件），不再写入我们的资源包，以补丁的人工翻译为准。
+    语言文件按条目合并，补丁中的译文已在扫描时吸收，无需跳过。"""
+    provided = PatchIndex(installed_patches(root)).non_lang_files()
+    if not provided:
+        return
+    for name, sink in list(outputs.packs.items()):
+        for rel in [r for r in sink.pack_files if r.lower() in provided]:
+            del sink.pack_files[rel]
+        if not sink.pack_files:
+            del outputs.packs[name]
+
+
+def top_pack(mc_version: str, packs: list[str]) -> str | None:
+    """应当排在最上面的那个 mctrans 资源包（配合 I18nUpdateMod 时补全包本来就在 CFPA 包下面）。"""
+    for name in (PACK_FILE, FIX_FILE):
+        pid = pack_id(mc_version, name)
+        if pid in packs:
+            return pid
+    return None
+
+
+def packs_above_ours(root: Path, mc_version: str) -> list[str]:
+    """已应用的汉化资源包上方、会盖掉我们译文的资源包：含 zh_cn 语言文件，或与我们的包有同名文件。
+    纹理包、其他语言的翻译包、模组自带的内置资源包不影响中文显示，不算在内。"""
+    root = Path(root)
+    if not is_applied(root):
+        return []
+    try:
+        manifest = json.loads((root / json.loads(pointer_path(root).read_text(encoding="utf-8"))["manifest"])
+                              .read_text(encoding="utf-8"))
+        ours = top_pack(mc_version, manifest["options"]["packs"])
+        text = (root / "options.txt").read_bytes().decode("utf-8", "replace")
+    except (OSError, ValueError, KeyError):
+        return []
+    packs = read_packs(text) or []
+    if ours is None or ours not in packs:
+        return []
+    own = read_pack(root / "resourcepacks" / pack_name(ours), [])
+    own_files = own.files if own else set()
+    result = []
+    for pid in reversed(packs[packs.index(ours) + 1:]):
+        path = resolve_pack(root, pid)
+        if path is None:  # 模组提供的内置资源包等
+            continue
+        pack = read_pack(path, [])
+        if pack is not None and (pack.lang or pack.files & own_files):
+            result.append(pack_name(pid))
+    return result
+
+
 def apply(root: Path, ws: Workspace, mc_version: str, mode: str = MODE_STANDALONE,
           set_lang: bool = False, dry_run: bool = False) -> ApplyReport:
     root = Path(root)
     outputs = build_outputs(ws, mode, root)
+    skip_patch_files(outputs, root)
     report = ApplyReport(
         entries=outputs.entries, mode=mode,
         packs={name: len(sink.pack_files) for name, sink in outputs.packs.items()},

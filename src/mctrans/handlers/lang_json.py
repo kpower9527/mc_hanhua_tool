@@ -12,6 +12,7 @@ from ..models import Entry, TranslatedItem
 from .base import Handler, OutputSink
 
 LANG_RE = re.compile(r"^assets/([^/]+)/lang/([A-Za-z_]+)\.(json|lang)$", re.IGNORECASE)
+VANILLA_NAMESPACES = frozenset({"minecraft", "realms"})
 NESTED_JAR_RE = re.compile(r"^META-INF/(?:jars|jarjar)/[^/]+\.jar$")
 MAX_NESTING = 2
 
@@ -59,15 +60,27 @@ class LangJsonHandler(Handler):
         return True
 
     def extract(self, instance: Instance) -> Iterator[Entry]:
+        from ..respacks import enabled_packs
+
         self.warnings = []
         seen: set[tuple[str, str]] = set()
+        # 整合包自带的资源包（resourcepacks 下已启用的、Paxi 强制加载的）里的英文：常有作者写的提示文本，
+        # 也常用来改写模组的英文（如加图标）。语言键全局生效、资源包优先于模组：
+        # - 资源包改写了模组的英文：以资源包的为准，模组里的这一条不再提取（它自带的中文是旧英文的翻译）
+        # - 与模组英文相同：用模组的条目，保留模组自带中文与 CFPA 译文
+        pack_entries: dict[str, Entry] = {}
+        for path in enabled_packs(instance.root):
+            for e in self._from_pack(path, seen):
+                pack_entries.setdefault(e.locator, e)  # 多个包定义同一个键：优先级高的（先扫到的）为准
+        overridden = {k: e.original for k, e in pack_entries.items()}
         for jar in instance.mod_jars:
             try:
                 data = jar.read_bytes()
             except OSError as exc:
                 self.warnings.append(f"无法读取 {jar.name}：{exc}")
                 continue
-            yield from self._from_jar(data, jar.name, 0, seen)
+            yield from self._from_jar(data, jar.name, 0, seen, overridden=overridden)
+        yield from (e for k, e in pack_entries.items() if k in overridden)
 
         # 实例内的资源目录：KubeJS 的 kubejs/assets/，以及 1.12 ResourceLoader 的 resources/
         for base in ("kubejs/assets", "resources"):
@@ -88,36 +101,60 @@ class LangJsonHandler(Handler):
                     seen, en.relative_to(instance.root).as_posix(), ext,
                 )
 
-    def _from_jar(self, data: bytes, label: str, depth: int, seen: set) -> Iterator[Entry]:
+    def _from_pack(self, path, seen: set) -> Iterator[Entry]:
+        prefix = f"pack:{path.name}!"
+        if path.is_dir():
+            files = {}
+            for f in path.glob("assets/*/lang/*"):
+                files[f.relative_to(path).as_posix()] = f
+            yield from self._from_files(files, lambda f: f.read_bytes(), prefix, path.name, seen, pack=True)
+            return
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            self.warnings.append(f"无法读取资源包 {path.name}：{exc}")
+            return
+        yield from self._from_jar(data, path.name, MAX_NESTING, seen, prefix=prefix, pack=True)
+
+    def _from_jar(self, data: bytes, label: str, depth: int, seen: set, prefix: str = "jar:",
+                  overridden: dict[str, str] | None = None, pack: bool = False) -> Iterator[Entry]:
         try:
             z = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile:
-            self.warnings.append(f"无法打开 jar，已跳过：{label}")
+            self.warnings.append(f"无法打开 {label}，已跳过")
             return
         with z:
             names = z.namelist()
-            langs: dict[str, dict[tuple[str, str], str]] = {}
-            for name in names:
-                m = LANG_RE.match(name)
-                if m:
-                    langs.setdefault(m.group(1), {})[(m.group(2).lower(), m.group(3).lower())] = name
-            for ns, files in sorted(langs.items()):
-                ext = "json" if ("en_us", "json") in files else "lang"
-                en = files.get(("en_us", ext))
-                if en is None:
-                    continue
-                zh = files.get(("zh_cn", ext))
-                yield from self._entries(
-                    f"jar:assets/{ns}/lang/en_us.{ext}", ns, z.read(en),
-                    z.read(zh) if zh else None, seen, f"{label}!{en}", ext,
-                )
+            yield from self._from_files({n: n for n in names}, z.read, prefix, label, seen, overridden, pack)
             if depth < MAX_NESTING:
                 for name in names:
                     if NESTED_JAR_RE.match(name):
-                        yield from self._from_jar(z.read(name), f"{label}!{name}", depth + 1, seen)
+                        yield from self._from_jar(z.read(name), f"{label}!{name}", depth + 1, seen,
+                                                  overridden=overridden)
+
+    def _from_files(self, files: dict, read, prefix: str, label: str, seen: set,
+                    overridden: dict[str, str] | None = None, pack: bool = False) -> Iterator[Entry]:
+        langs: dict[str, dict[tuple[str, str], object]] = {}
+        for name, handle in files.items():
+            m = LANG_RE.match(name)
+            if m:
+                langs.setdefault(m.group(1), {})[(m.group(2).lower(), m.group(3).lower())] = (name, handle)
+        for ns, found in sorted(langs.items()):
+            if pack and ns in VANILLA_NAMESPACES:
+                continue  # 资源包里的原版英文（纹理包常整份附带）：游戏自带官方中文，不翻译
+            ext = "json" if ("en_us", "json") in found else "lang"
+            en = found.get(("en_us", ext))
+            if en is None:
+                continue
+            zh = found.get(("zh_cn", ext))
+            yield from self._entries(
+                f"{prefix}assets/{ns}/lang/en_us.{ext}", ns, read(en[1]),
+                read(zh[1]) if zh else None, seen, f"{label}!{en[0]}", ext, overridden,
+            )
 
     def _entries(self, source: str, ns: str, en_data: bytes, zh_data: bytes | None,
-                 seen: set, label: str, ext: str = "json") -> Iterator[Entry]:
+                 seen: set, label: str, ext: str = "json",
+                 overridden: dict[str, str] | None = None) -> Iterator[Entry]:
         try:
             en = parse_any(en_data, ext)
         except ValueError as exc:
@@ -133,6 +170,10 @@ class LangJsonHandler(Handler):
         for key, text in en.items():
             if (source, key) in seen or not text.strip():
                 continue
+            if overridden and key in overridden:
+                if overridden[key] != text:
+                    continue  # 被资源包改写：以资源包的英文为准
+                del overridden[key]  # 与资源包相同：用模组的条目
             seen.add((source, key))
             yield Entry(
                 handler=self.name, source=source, locator=key, namespace=ns,
