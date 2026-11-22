@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller 打包配置：界面版 mctrans.exe 与命令行版 mctrans-cli.exe 共用一个目录。
+# PyInstaller 打包配置：界面版 麦块岛MC一键汉化.exe 与命令行版 maikuai-cli.exe 共用一个目录。
 # 用法：uv run python packaging/build.py
 from pathlib import Path
 
@@ -32,15 +32,15 @@ for analysis in (gui, cli):
     analysis.binaries = [b for b in analysis.binaries if not any(d.lower() in b[0].lower() for d in DROP)]
 
 gui_exe = EXE(  # noqa: F821
-    PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name="mctrans",  # noqa: F821
+    PYZ(gui.pure), gui.scripts, [], exclude_binaries=True, name="麦块岛MC一键汉化",  # noqa: F821
     console=False, icon=str(ICON), upx=False,
 )
 cli_exe = EXE(  # noqa: F821
-    PYZ(cli.pure), cli.scripts, [], exclude_binaries=True, name="mctrans-cli",  # noqa: F821
+    PYZ(cli.pure), cli.scripts, [], exclude_binaries=True, name="maikuai-cli",  # noqa: F821
     console=True, icon=str(ICON), upx=False,
 )
 COLLECT(  # noqa: F821
     gui_exe, gui.binaries, gui.datas,
     cli_exe, cli.binaries, cli.datas,
-    name="mctrans", upx=False,
+    name="麦块岛MC一键汉化", upx=False,
 )

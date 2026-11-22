@@ -1,6 +1,6 @@
 [project]
 name = "mctrans"
-version = "0.1.6"
+version = "0.1.7"
 description = "Minecraft 整合包自动汉化工具"
 requires-python = ">=3.11"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 mctrans = "mctrans.cli:main"
 mctrans-gui = "mctrans.gui.app:main"
+maikuai-cli = "mctrans.cli:main"
 
 [dependency-groups]
 dev = [

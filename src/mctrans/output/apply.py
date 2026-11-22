@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from ..applied import pointer_path
+from ..brand import PACK_DESCRIPTION
 from ..mcversion import parse_version
 from ..handlers import all_handlers
 from ..handlers.base import OutputSink
@@ -20,11 +21,12 @@ MODE_STANDALONE = "standalone"
 MODE_I18N = "i18nupdate"
 MODES = (MODE_STANDALONE, MODE_I18N)
 
-PACK_FILE = "mctrans-zh_cn.zip"
-FILL_FILE = "mctrans-zh_cn-fill.zip"
-FIX_FILE = "mctrans-zh_cn-fix.zip"
+PACK_FILE = "maikuai-zh_cn.zip"
+FILL_FILE = "maikuai-zh_cn-fill.zip"
+FIX_FILE = "maikuai-zh_cn-fix.zip"
 PACK_ID = f"file/{PACK_FILE}"
-PACK_DESCRIPTION = "mctrans 自动汉化"
+# 0.1.6 及以前的文件名：识别旧版应用的结果
+LEGACY_TOP_FILES = ("mctrans-zh_cn.zip", "mctrans-zh_cn-fix.zip")
 
 # 每种模式下各资源包收录哪些来源的译文
 PACK_ORIGINS: dict[str, dict[str, frozenset[str]]] = {
@@ -129,7 +131,7 @@ def skip_patch_files(outputs: Outputs, root: Path) -> None:
 
 def top_pack(mc_version: str, packs: list[str]) -> str | None:
     """应当排在最上面的那个 mctrans 资源包（配合 I18nUpdateMod 时补全包本来就在 CFPA 包下面）。"""
-    for name in (PACK_FILE, FIX_FILE):
+    for name in (PACK_FILE, FIX_FILE, *LEGACY_TOP_FILES):
         pid = pack_id(mc_version, name)
         if pid in packs:
             return pid

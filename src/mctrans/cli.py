@@ -29,7 +29,7 @@ def main() -> None:
                 stream.reconfigure(errors="replace")
             except (ValueError, OSError):
                 pass
-    app(prog_name="mctrans")
+    app(prog_name="maikuai-cli")
 
 InstanceArg = Annotated[
     Path, typer.Argument(help="游戏实例目录（含 mods/ 的那一层）", exists=True, file_okay=False, resolve_path=True)
@@ -129,7 +129,7 @@ def do_apply(root: Path, set_lang: bool, dry_run: bool, mode: str = "auto") -> N
     for rel in report.instance_files:
         console.print(f"修改文件：{rel}")
     if not dry_run:
-        console.print("已自动备份，可用 mctrans restore 一键还原")
+        console.print("已自动备份，可用 maikuai-cli restore 一键还原")
 
 
 @app.command()
@@ -176,7 +176,7 @@ def status(instance: InstanceArg):
     """查看翻译进度。"""
     s = service.summary(instance)
     if not s.scanned:
-        _fail("这个整合包还没有扫描过，请先运行 mctrans scan")
+        _fail("这个整合包还没有扫描过，请先运行 maikuai-cli scan")
     console.print(f"Minecraft {s.mc_version} · 加载器 {s.loader}")
     totals: dict[str, int] = {}
     for counts in s.by_handler.values():
@@ -216,7 +216,7 @@ def review_export(instance: InstanceArg,
     except ServiceError as exc:
         _fail(str(exc))
     console.print(f"已导出 {n} 条到 {file}")
-    console.print("修改「译文」列或在「确认」列填「是」，保存后运行 mctrans review import 导入")
+    console.print("修改「译文」列或在「确认」列填「是」，保存后运行 maikuai-cli review import 导入")
 
 
 @review_app.command("import")
@@ -235,7 +235,7 @@ def review_import(instance: InstanceArg,
     for line in report.invalid[:MAX_WARNINGS_SHOWN]:
         console.print(f"[yellow]拒绝：[/yellow]{line}")
     if report.updated or report.confirmed:
-        console.print("运行 mctrans apply 使修改生效")
+        console.print("运行 maikuai-cli apply 使修改生效")
 
 
 @app.command("export-patch")

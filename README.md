@@ -1,18 +1,22 @@
-# mctrans：Minecraft 整合包自动汉化工具
+# 麦块岛MC一键汉化
+
+由 [麦块岛（www.maikuai.net）](https://www.maikuai.net) 出品的 Minecraft 整合包一键汉化工具。
 
 把英文整合包（已安装的游戏实例目录）自动翻译成简体中文。当前支持 mod 语言文件、FTB Quests 任务书、Patchouli 手册、KubeJS 与 CraftTweaker 脚本中的提示文本，以及按规则指定的配置文本，支持 MC 1.12.2 与 1.16 及以上。
 
 ## 图形界面版（推荐）
 
-1. 解压 `mctrans-<版本>-windows.zip`，双击 `mctrans\mctrans.exe`
+1. 解压 `maikuai-hanhua-<版本>-windows.zip`，双击 `麦块岛MC一键汉化\麦块岛MC一键汉化.exe`
 2. 点「设置」，选择翻译服务（DeepSeek 或通义千问）并填写 API Key，可以点「测试连接」确认
 3. 点「添加整合包…」，选择实例目录（包含 `mods` 文件夹的那一层），会自动扫描
 4. 在「概览」页点「翻译」（下拉菜单可以先试翻 50 条，或只翻某一类内容），完成后点「应用到游戏」
 5. 在「审校」页可以筛选、搜索并直接修改译文，改完点「应用到游戏」生效；随时可以点「还原」撤销所有修改
 
-同一目录下的 `mctrans-cli.exe` 是命令行版，用法与下文相同（把 `uv run mctrans` 换成 `mctrans-cli`）。
+同一目录下的 `maikuai-cli.exe` 是命令行版，用法与下文相同（把 `uv run mctrans` 换成 `maikuai-cli`）。
 
-自己构建：`uv run python packaging/build.py`，产物为 `dist/mctrans-<版本>-windows.zip`（解压前的目录在 `dist/<版本>/mctrans/`）。
+「更多 → 导出汉化补丁」生成的补丁附带 `一键安装汉化.bat`：玩家关闭游戏后双击（或把整合包文件夹拖到它上面），会复制补丁文件（覆盖前备份）、把汉化资源包排到资源包列表最上面，并把游戏语言设为简体中文。
+
+自己构建：`uv run python packaging/build.py`，产物为 `dist/maikuai-hanhua-<版本>-windows.zip`（解压前的目录在 `dist/<版本>/麦块岛MC一键汉化/`）。
 
 ## 命令行版安装
 
@@ -86,8 +90,8 @@ GitHub 访问慢时，可以在配置中把 `cfpa_base_url` 改为镜像地址�
 
 如果整合包装了 I18nUpdateMod（自动汉化更新模组），工具会自动切换到配合模式：
 
-- `mctrans-zh_cn-fill.zip`（补全包）：只包含 CFPA 没有的机翻，放在 I18nUpdateMod 资源包**之下**，以后 CFPA 补上人工译文时会自动覆盖机翻
-- `mctrans-zh_cn-fix.zip`（修正包）：只包含人工确认的译文，放在 I18nUpdateMod 资源包**之上**
+- `maikuai-zh_cn-fill.zip`（补全包）：只包含 CFPA 没有的机翻，放在 I18nUpdateMod 资源包**之下**，以后 CFPA 补上人工译文时会自动覆盖机翻
+- `maikuai-zh_cn-fix.zip`（修正包）：只包含人工确认的译文，放在 I18nUpdateMod 资源包**之上**
 
 可以用 `--mode standalone` 或 `--mode i18nupdate` 强制指定模式。
 
@@ -151,4 +155,4 @@ uv run mctrans export-patch <实例目录> <输出目录>
 
 - 工作数据保存在实例目录下的 `.mctrans/`，分发整合包时请排除这个目录
 - mod 自带的中文会被直接采用，不会重复翻译
-- 独立模式生成 `resourcepacks/mctrans-zh_cn.zip`，放在资源包列表最上层
+- 独立模式生成 `resourcepacks/maikuai-zh_cn.zip`，放在资源包列表最上层

@@ -17,7 +17,7 @@ from .output.options import read_packs
 
 ZH_LANG_RE = re.compile(r"^assets/([^/]+)/lang/zh_cn\.(json|lang)$", re.IGNORECASE)
 LANG_RE = re.compile(r"^assets/[^/]+/lang/[^/]+$", re.IGNORECASE)
-OWN_PREFIX = "mctrans-"
+OWN_PREFIXES = ("maikuai-zh_cn", "mctrans-zh_cn")  # 我们自己生成的包（含旧版文件名）
 # I18nUpdateMod 下载的 CFPA 包：已作为 CFPA 来源处理
 SKIP_PREFIXES = ("Minecraft-Mod-Language-",)
 # Paxi 模组强制加载的资源包（总是启用，资源包列表里的 ID 不带 file/ 前缀）
@@ -36,7 +36,7 @@ def pack_name(pack_id: str) -> str:
 
 
 def _is_pack(p: Path) -> bool:
-    if p.name.startswith(OWN_PREFIX) or p.name.startswith(SKIP_PREFIXES):
+    if p.name.startswith(OWN_PREFIXES) or p.name.startswith(SKIP_PREFIXES):
         return False
     return (p.is_file() and p.suffix.lower() == ".zip") or (p.is_dir() and (p / "pack.mcmeta").is_file())
 

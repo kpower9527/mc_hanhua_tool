@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__, service
+from ..brand import APP_NAME, SITE_HOST, SITE_NAME, SITE_URL
 from ..instance import InstanceError, detect_mc_version
 from ..instances import add_instance, find_instance, find_instance_dirs, load_instances, remove_instance
 from .overview import OverviewPage
@@ -22,7 +23,7 @@ from .worker import TaskRunner
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.base_title = f"mctrans 整合包汉化工具 {__version__}"
+        self.base_title = f"{APP_NAME} {__version__}"
         self.setWindowTitle(self.base_title)
         self.setStyleSheet(STYLE)
         self.resize(1200, 780)
@@ -46,7 +47,17 @@ class MainWindow(QMainWindow):
         buttons.addWidget(add_button)
         buttons.addWidget(remove_button)
         left_layout.addLayout(buttons)
-        left_layout.addWidget(settings_button)
+        bottom = QHBoxLayout()
+        bottom.addWidget(settings_button, 1)
+        about_button = QPushButton("关于")
+        about_button.clicked.connect(self.show_about)
+        bottom.addWidget(about_button)
+        left_layout.addLayout(bottom)
+        site = QLabel(f'<a href="{SITE_URL}">{SITE_NAME} {SITE_HOST}</a>')
+        site.setOpenExternalLinks(True)
+        site.setAlignment(Qt.AlignCenter)
+        site.setToolTip("整合包下载、汉化与教程")
+        left_layout.addWidget(site)
 
         self.overview = OverviewPage(self.runner)
         self.review = ReviewPage()
@@ -62,6 +73,9 @@ class MainWindow(QMainWindow):
         splitter.setSizes([260, 940])
         self.setCentralWidget(splitter)
         self.statusBar().showMessage("就绪")
+        status_site = QLabel(f'<a href="{SITE_URL}">{SITE_NAME} · {SITE_HOST}</a>')
+        status_site.setOpenExternalLinks(True)
+        self.statusBar().addPermanentWidget(status_site)
 
         self.overview.task_done.connect(self._on_task_done)
         self.overview.settings_requested.connect(self.open_settings)
@@ -73,6 +87,17 @@ class MainWindow(QMainWindow):
         self.runner.busy_changed.connect(self._on_busy)
         self._review_dirty = True
         self.reload_instances()
+
+    def show_about(self) -> None:
+        QMessageBox.about(self, f"关于{APP_NAME}", (
+            f"<h3>{APP_NAME} {__version__}</h3>"
+            "<p>Minecraft 整合包一键汉化：先用 mod 自带中文、CFPA 社区汉化和翻译记忆免费补全，"
+            "剩下的交给大模型翻译；支持模组语言文件、任务书、手册、KubeJS 脚本与配置文本。</p>"
+            f'<p>官网：<a href="{SITE_URL}">{SITE_NAME} {SITE_HOST}</a> —— 整合包下载、汉化与教程</p>'
+            '<p>社区译文来自 <a href="https://github.com/CFPAOrg/Minecraft-Mod-Language-Package">CFPA</a>'
+            "（CC BY-NC-SA 4.0）。机器翻译可能有错译，可在「审校」页修改。</p>"
+            f"<p>数据目录：{service.data_dir()}</p>"
+        ))
 
     # ---- 整合包列表 ----
     def reload_instances(self, select: str | None = None) -> None:

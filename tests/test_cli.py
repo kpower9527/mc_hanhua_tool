@@ -81,12 +81,12 @@ def test_full_flow_and_restore(pack):
     assert any("- Gear → 齿轮" in call for call in fake.calls)
     # Shaft 由 CFPA 提供，不再发给模型
     assert not any('"Shaft"' in call for call in fake.calls)
-    zpath = root / "resourcepacks" / "mctrans-zh_cn.zip"
+    zpath = root / "resourcepacks" / "maikuai-zh_cn.zip"
     with zipfile.ZipFile(io.BytesIO(zpath.read_bytes())) as z:
         data = json.loads(z.read("assets/create/lang/zh_cn.json"))
     assert data == {"item.create.shaft": "传动杆", "tip.create.x": "译Use the Gear %s"}
     text = (root / "options.txt").read_text(encoding="utf-8")
-    assert read_packs(text)[-1] == "file/mctrans-zh_cn.zip" and "lang:zh_cn" in text
+    assert read_packs(text)[-1] == "file/maikuai-zh_cn.zip" and "lang:zh_cn" in text
     invoke("restore", root)
     assert not zpath.exists()
 
@@ -125,10 +125,10 @@ def test_i18n_mode_auto_detected(pack):
     make_jar(root / "mods" / "I18nUpdateMod-3.6.0.jar", {"META-INF/mods.toml": 'modId="i18nupdatemod"'})
     out = invoke("run", root, "--yes").output
     assert "i18nupdate" in out
-    assert (root / "resourcepacks" / "mctrans-zh_cn-fill.zip").exists()
-    assert not (root / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert (root / "resourcepacks" / "maikuai-zh_cn-fill.zip").exists()
+    assert not (root / "resourcepacks" / "maikuai-zh_cn.zip").exists()
     packs = read_packs((root / "options.txt").read_text(encoding="utf-8"))
-    assert packs[-2:] == ["file/mctrans-zh_cn-fill.zip", "file/Minecraft-Mod-Language-Modpack-Converted-1.20.1.zip"]
+    assert packs[-2:] == ["file/maikuai-zh_cn-fill.zip", "file/Minecraft-Mod-Language-Modpack-Converted-1.20.1.zip"]
 
 
 def test_scan_without_network_warns(instance_dir):
@@ -156,7 +156,7 @@ def test_quests_and_patchouli_end_to_end(pack):
     invoke("apply", root)
     zh = (lang_dir / "zh_cn.snbt").read_text(encoding="utf-8")
     assert '"新手入门"' in zh and '"译Craft a &6Gear&r."' in zh
-    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes())) as z:
         page = json.loads(z.read("assets/guide/patchouli_books/book/zh_cn/entries/intro.json"))
     assert page["name"] == "译Intro"
     # apply 之后重新扫描：不能把自己写出的译文当成整合包自带中文
@@ -201,10 +201,10 @@ def test_review_round_trip_and_patch(pack, tmp_path):
     wb.save(xlsx)
     out = invoke("review", "import", root, xlsx).output
     assert "修改 1 条" in out
-    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes())) as z:
         assert json.loads(z.read("assets/create/lang/zh_cn.json"))["tip.create.x"] == "译Use the Gear %s"
     invoke("apply", root)
-    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes())) as z:
         assert json.loads(z.read("assets/create/lang/zh_cn.json"))["tip.create.x"] == "使用齿轮 %s"
     from mctrans.memory import Memory
     with Memory.default() as memory:
@@ -212,6 +212,6 @@ def test_review_round_trip_and_patch(pack, tmp_path):
     patch_dir = tmp_path / "patch"
     out = invoke("export-patch", root, patch_dir).output
     assert "CC BY-NC-SA" in out
-    assert (patch_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert (patch_dir / "resourcepacks" / "maikuai-zh_cn.zip").exists()
     result = runner.invoke(cli.app, ["export-patch", str(root), str(patch_dir)])
     assert result.exit_code == 1 and "不为空" in result.output

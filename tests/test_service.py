@@ -71,7 +71,7 @@ def test_full_flow(pack):
     assert s.by_handler["lang_json"] == {"done": 5}
     assert s.origins == {"cfpa": 1, "llm": 3, "mod_builtin": 1}
     applied = service.apply(root)
-    assert applied.packs == {"mctrans-zh_cn.zip": 1}
+    assert applied.packs == {"maikuai-zh_cn.zip": 1}
     service.restore(root)
 
 

@@ -7,6 +7,8 @@ from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication
 
+from ..brand import APP_NAME
+
 
 def make_icon_pixmap(size: int = 256) -> QPixmap:
     """绘制程序图标：绿色圆角方块上的「汉」字。"""
@@ -32,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv if argv is None else argv)
     smoke = "--smoke-test" in argv
     app = QApplication.instance() or QApplication([a for a in argv if a != "--smoke-test"])
-    app.setApplicationName("mctrans")
+    app.setApplicationName(APP_NAME)
     app.setWindowIcon(QIcon(make_icon_pixmap()))
     from .main_window import MainWindow  # 延迟导入，便于先创建 QApplication
 

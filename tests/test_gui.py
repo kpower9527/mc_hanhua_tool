@@ -133,19 +133,19 @@ def test_main_window_flow(qtbot, pack, tmp_path):
         review.apply_requested.emit()
     assert blocker.args == ["应用"]
     assert review.unapplied == 0
-    with zipfile.ZipFile(io.BytesIO((pack / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+    with zipfile.ZipFile(io.BytesIO((pack / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes())) as z:
         data = json.loads(z.read("assets/create/lang/zh_cn.json"))
     assert data["tip.create.y"] == "传送带"
 
     with qtbot.waitSignal(window.overview.task_done, timeout=20000) as blocker:
         assert window.overview.restore()
     assert blocker.args == ["还原"]
-    assert not (pack / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert not (pack / "resourcepacks" / "maikuai-zh_cn.zip").exists()
 
     patch_dir = tmp_path / "patch"
     with qtbot.waitSignal(window.overview.task_done, timeout=20000):
         assert window.overview.export_patch(str(patch_dir))
-    assert (patch_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert (patch_dir / "resourcepacks" / "maikuai-zh_cn.zip").exists()
 
 
 def test_retranslate_from_review(qtbot, pack):
@@ -285,4 +285,4 @@ def test_pack_order_notice(qtbot, pack):
         assert o.reapply_on_top()
     assert blocker.args == ["重新应用"]
     assert not o.order_notice.isVisibleTo(window)
-    assert read_packs(opts.read_text(encoding="utf-8"))[-1] == "file/mctrans-zh_cn.zip"
+    assert read_packs(opts.read_text(encoding="utf-8"))[-1] == "file/maikuai-zh_cn.zip"

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import service
+from ..brand import APP_NAME, SITE_HOST, SITE_NAME, SITE_URL
 from ..review import ORIGIN_LABELS
 from .review import HANDLER_LABELS
 from .worker import TaskRunner
@@ -30,11 +31,15 @@ class WelcomePanel(QFrame):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("welcome")
-        title = QLabel("欢迎使用 mctrans 整合包汉化工具")
+        title = QLabel(f"欢迎使用{APP_NAME}")
         title.setObjectName("welcomeTitle")
         intro = QLabel("先用 mod 自带中文、CFPA 社区汉化和翻译记忆免费补全，剩下的再交给大模型翻译。"
                        "所有修改都会自动备份，可以一键还原。")
         intro.setWordWrap(True)
+        site = QLabel(f'由 <a href="{SITE_URL}">{SITE_NAME}（{SITE_HOST}）</a> 出品 —— 整合包下载、汉化与教程，'
+                      "使用中遇到问题也可以到网站反馈。")
+        site.setOpenExternalLinks(True)
+        site.setWordWrap(True)
         self.step1 = QLabel()
         self.step1.setObjectName("stepTitle")
         step1_text = QLabel('翻译需要大模型服务的 API Key。推荐通义千问 qwen3.7-flash（便宜、速度快），'
@@ -67,6 +72,7 @@ class WelcomePanel(QFrame):
         layout.setSpacing(10)
         layout.addWidget(title)
         layout.addWidget(intro)
+        layout.addWidget(site)
         layout.addSpacing(10)
         for widget in (self.step1, step1_text, self.settings_button):
             layout.addWidget(widget)
@@ -159,7 +165,7 @@ class OverviewPage(QWidget):
         self.order_button.setObjectName("primary")
         self.order_button.setMinimumHeight(30)
         self.order_button.setToolTip("重新扫描（读取汉化补丁中的人工译文，优先采用），再重新应用，"
-                                     "把 mctrans 汉化包放回资源包列表最上面")
+                                     "把汉化包放回资源包列表最上面")
         self.order_button.clicked.connect(self.reapply_on_top)
         notice = QHBoxLayout(self.order_notice)
         notice.setContentsMargins(12, 8, 12, 8)
@@ -319,7 +325,7 @@ class OverviewPage(QWidget):
             return
         names = "、".join(above[:3]) + (f" 等 {len(above)} 个" if len(above) > 3 else "")
         self.order_label.setText(
-            f"⚠ 资源包「{names}」排在 mctrans 汉化包上面，重复的条目会以它为准"
+            f"⚠ 资源包「{names}」排在汉化包上面，重复的条目会以它为准"
             "（若它是旧版或不完整的汉化，游戏里会出现过时译文或英文）。\n"
             "点右侧按钮：先读取其中的汉化译文（人工译文优先采用），再把汉化包移到最前。请先关闭游戏。")
         self.order_notice.show()
@@ -445,6 +451,8 @@ class OverviewPage(QWidget):
                 self.append_log(f"跳过（应用后被改动过）：{rel}", "warn")
         elif name == "导出补丁":
             self.append_log(f"已导出补丁（译文 {result.entries} 条，文件 {len(result.files)} 个）")
+            self.append_log("补丁内附「一键安装汉化.bat」：玩家关闭游戏后双击，选择整合包目录，"
+                            "即可复制文件、把汉化包排到资源包最上面并切换为简体中文。")
             if result.includes_cfpa:
                 self.append_log("补丁包含 CFPA 社区译文（CC BY-NC-SA 4.0），分发时请保留说明文件，且不得商用", "warn")
 

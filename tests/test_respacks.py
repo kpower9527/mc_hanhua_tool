@@ -26,7 +26,7 @@ def test_installed_patches_order_and_filters(instance_dir):
     write_patch(instance_dir, "B.zip", {"assets/x/lang/zh_cn.json": lang({"k": "乙"})})
     write_patch(instance_dir, "C.zip", {"assets/x/lang/zh_cn.json": lang({"k": "丙"})})  # 未启用
     write_patch(instance_dir, "textures.zip", {"assets/x/textures/a.png": b"png"})       # 无中文：忽略
-    write_patch(instance_dir, "mctrans-zh_cn.zip", {"assets/x/lang/zh_cn.json": lang({"k": "我们"})})
+    write_patch(instance_dir, "maikuai-zh_cn.zip", {"assets/x/lang/zh_cn.json": lang({"k": "我们"})})
     folder = instance_dir / "resourcepacks" / "D"
     (folder / "assets" / "y" / "lang").mkdir(parents=True)
     (folder / "pack.mcmeta").write_text("{}", encoding="utf-8")
@@ -70,9 +70,9 @@ def test_scan_absorbs_patch_and_apply_moves_ours_to_top(pack):
     assert any("整合包汉化补丁.zip" in t for _, t in rec.logs)
     assert service.summary(root).origins.get("respack") == 1  # 参数不一致的那条不采用
     packs = read_packs((root / "options.txt").read_text(encoding="utf-8"))
-    assert packs[-1] == "file/mctrans-zh_cn.zip"
+    assert packs[-1] == "file/maikuai-zh_cn.zip"
     assert service.packs_above_ours(root) == []
-    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+    with zipfile.ZipFile(io.BytesIO((root / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes())) as z:
         data = json.loads(z.read("assets/create/lang/zh_cn.json"))
     assert data["tip.create.y"] == "传送带"
     assert data["tip.create.x"] == "译Use the Gear %s"

@@ -1,8 +1,13 @@
 import io
 import json
+import shutil
+import subprocess
 import zipfile
 
 import pytest
+
+from mctrans.output.installer import BAT_NAME, PS1_NAME
+from mctrans.output.options import get_option, read_packs
 
 from mctrans.handlers.base import Handler
 from mctrans.models import Entry
@@ -33,8 +38,8 @@ def test_export_standalone_with_cfpa_notice(instance_dir, ws, tmp_path):
     out = tmp_path / "patch"
     report = export_patch(instance_dir, ws, "1.20.1", out, MODE_STANDALONE)
     assert report.includes_cfpa and report.entries == 2
-    assert report.files == ["resourcepacks/mctrans-zh_cn.zip", README_NAME]
-    with zipfile.ZipFile(io.BytesIO((out / "resourcepacks" / "mctrans-zh_cn.zip").read_bytes())) as z:
+    assert report.files == ["resourcepacks/maikuai-zh_cn.zip", README_NAME, BAT_NAME, PS1_NAME]
+    with zipfile.ZipFile(io.BytesIO((out / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes())) as z:
         assert json.loads(z.read("assets/a/lang/zh_cn.json")) == {"k1": "齿轮", "k2": "轴"}
     readme = (out / README_NAME).read_text(encoding="utf-8")
     assert "CC BY-NC-SA 4.0" in readme and "1.20.1" in readme
@@ -44,7 +49,7 @@ def test_export_standalone_with_cfpa_notice(instance_dir, ws, tmp_path):
 def test_export_i18n_mode_has_no_cfpa(instance_dir, ws, tmp_path):
     report = export_patch(instance_dir, ws, "1.20.1", tmp_path / "p", MODE_I18N)
     assert not report.includes_cfpa
-    assert report.files == ["resourcepacks/mctrans-zh_cn-fill.zip", README_NAME]
+    assert report.files == ["resourcepacks/maikuai-zh_cn-fill.zip", README_NAME, BAT_NAME, PS1_NAME]
     assert "CC BY-NC-SA" not in (tmp_path / "p" / README_NAME).read_text(encoding="utf-8")
 
 
@@ -74,5 +79,54 @@ class FileHandler(Handler):
 def test_instance_files_are_copied(instance_dir, ws, tmp_path, monkeypatch):
     monkeypatch.setattr(apply_mod, "all_handlers", lambda: [FileHandler()])
     report = export_patch(instance_dir, ws, "1.20.1", tmp_path / "p", MODE_STANDALONE)
-    assert report.files == ["config/quests.txt", README_NAME]
+    assert report.files == ["config/quests.txt", README_NAME, BAT_NAME, PS1_NAME]
     assert (tmp_path / "p" / "config" / "quests.txt").read_text(encoding="utf-8") == "齿轮\n轴"
+
+
+POWERSHELL = shutil.which("powershell")
+needs_ps = pytest.mark.skipif(POWERSHELL is None, reason="需要 Windows PowerShell")
+
+
+def run_installer(patch_dir, target=None):
+    args = [POWERSHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", str(patch_dir / PS1_NAME)]
+    if target is not None:
+        args.append(str(target))
+    proc = subprocess.run(args, capture_output=True, timeout=120)
+    assert proc.returncode == 0, proc.stdout.decode("gbk", "replace") + proc.stderr.decode("gbk", "replace")
+
+
+@needs_ps
+def test_installer_copies_and_puts_pack_on_top(instance_dir, ws, tmp_path):
+    patch = tmp_path / "补丁 目录"
+    export_patch(instance_dir, ws, "1.20.1", patch, MODE_STANDALONE)
+    game = tmp_path / "游戏 实例"
+    (game / "mods").mkdir(parents=True)
+    (game / "resourcepacks").mkdir()
+    (game / "resourcepacks" / "maikuai-zh_cn.zip").write_bytes(b"old")
+    (game / "options.txt").write_bytes(
+        'version:3465\r\nresourcePacks:["vanilla","file/maikuai-zh_cn.zip","file/汉化补丁.zip"]\r\nlang:en_us\r\n'
+        .encode("utf-8"))
+    run_installer(patch, game)
+    data = (game / "options.txt").read_bytes()
+    assert not data.startswith(b"\xef\xbb\xbf")
+    text = data.decode("utf-8")
+    assert "\r\n" in text and text.startswith("version:3465")
+    assert read_packs(text) == ["vanilla", "file/汉化补丁.zip", "file/maikuai-zh_cn.zip"]
+    assert get_option(text, "lang") == "zh_cn"
+    assert (game / "resourcepacks" / "maikuai-zh_cn.zip").read_bytes() != b"old"
+    backups = list((game / ".hanhua-backup").rglob("maikuai-zh_cn.zip"))
+    assert len(backups) == 1 and backups[0].read_bytes() == b"old"
+    assert not (game / PS1_NAME).exists() and not (game / README_NAME).exists()
+
+
+@needs_ps
+def test_installer_in_place_i18n_without_options(instance_dir, ws, tmp_path):
+    game = tmp_path / "game"
+    export_patch(instance_dir, ws, "1.20.1", game, MODE_I18N)
+    (game / "mods").mkdir()
+    run_installer(game)
+    text = (game / "options.txt").read_text(encoding="utf-8")
+    assert read_packs(text) == ["vanilla", "file/maikuai-zh_cn-fill.zip",
+                                "file/Minecraft-Mod-Language-Modpack-Converted-1.20.1.zip"]
+    assert get_option(text, "lang") == "zh_cn"

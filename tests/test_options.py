@@ -18,9 +18,9 @@ def test_get_and_set_option_keeps_crlf():
 
 
 def test_add_pack_top():
-    out = add_pack_top(SAMPLE, "file/mctrans-zh_cn.zip")
-    assert read_packs(out) == ["vanilla", "file/other.zip", "file/mctrans-zh_cn.zip"]
-    assert read_packs(add_pack_top(out, "file/mctrans-zh_cn.zip")) == read_packs(out)  # 不重复
+    out = add_pack_top(SAMPLE, "file/maikuai-zh_cn.zip")
+    assert read_packs(out) == ["vanilla", "file/other.zip", "file/maikuai-zh_cn.zip"]
+    assert read_packs(add_pack_top(out, "file/maikuai-zh_cn.zip")) == read_packs(out)  # 不重复
 
 
 def test_add_pack_to_empty_options():
@@ -55,5 +55,5 @@ def test_place_around_existing_anchor_keeps_others():
 
 
 def test_default_packs_for_legacy():
-    assert read_packs(add_pack_top("", "mctrans-zh_cn.zip", default_packs=[])) == ["mctrans-zh_cn.zip"]
+    assert read_packs(add_pack_top("", "maikuai-zh_cn.zip", default_packs=[])) == ["maikuai-zh_cn.zip"]
     assert read_packs(place_around("", "A.zip", ["fill.zip"], [], default_packs=[])) == ["fill.zip", "A.zip"]

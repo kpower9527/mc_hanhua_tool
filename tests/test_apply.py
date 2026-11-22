@@ -38,8 +38,8 @@ def read_zip(path):
 def test_apply_creates_pack_and_enables_it(instance_dir, ws):
     (instance_dir / "options.txt").write_bytes(b'version:3465\r\nresourcePacks:["vanilla"]\r\nlang:en_us\r\n')
     report = apply(instance_dir, ws, "1.20.1", set_lang=True)
-    assert report.entries == 1 and report.packs == {"mctrans-zh_cn.zip": 1} and report.mode == "standalone"
-    files = read_zip(instance_dir / "resourcepacks" / "mctrans-zh_cn.zip")
+    assert report.entries == 1 and report.packs == {"maikuai-zh_cn.zip": 1} and report.mode == "standalone"
+    files = read_zip(instance_dir / "resourcepacks" / "maikuai-zh_cn.zip")
     assert json.loads(files["assets/a/lang/zh_cn.json"]) == {"k2": "传动杆"}  # 不含 mod 自带的 k1
     assert json.loads(files["pack.mcmeta"])["pack"]["pack_format"] == 15
     text = (instance_dir / "options.txt").read_bytes().decode("utf-8")
@@ -66,9 +66,9 @@ def test_restore_round_trip(instance_dir, ws):
     (instance_dir / "options.txt").write_bytes(original)
     apply(instance_dir, ws, "1.20.1", set_lang=True)
     report = restore(instance_dir)
-    assert not (instance_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert not (instance_dir / "resourcepacks" / "maikuai-zh_cn.zip").exists()
     assert (instance_dir / "options.txt").read_bytes() == original
-    assert report.removed == ["resourcepacks/mctrans-zh_cn.zip"]
+    assert report.removed == ["resourcepacks/maikuai-zh_cn.zip"]
     assert not is_applied(instance_dir)
     with pytest.raises(ApplyError):
         restore(instance_dir)
@@ -85,10 +85,10 @@ def test_restore_survives_game_rewriting_options(instance_dir, ws):
 
 def test_restore_skips_modified_pack(instance_dir, ws):
     apply(instance_dir, ws, "1.20.1")
-    (instance_dir / "resourcepacks" / "mctrans-zh_cn.zip").write_bytes(b"user changed")
+    (instance_dir / "resourcepacks" / "maikuai-zh_cn.zip").write_bytes(b"user changed")
     report = restore(instance_dir)
-    assert report.skipped == ["resourcepacks/mctrans-zh_cn.zip"]
-    assert (instance_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert report.skipped == ["resourcepacks/maikuai-zh_cn.zip"]
+    assert (instance_dir / "resourcepacks" / "maikuai-zh_cn.zip").exists()
 
 
 def test_apply_twice_is_idempotent(instance_dir, ws):
@@ -158,7 +158,7 @@ def mixed_ws(instance_dir):
 
 def test_standalone_includes_cfpa(instance_dir, mixed_ws):
     apply(instance_dir, mixed_ws, "1.20.1")
-    files = read_zip(instance_dir / "resourcepacks" / "mctrans-zh_cn.zip")
+    files = read_zip(instance_dir / "resourcepacks" / "maikuai-zh_cn.zip")
     assert set(json.loads(files["assets/a/lang/zh_cn.json"])) == {"k.cfpa", "k.llm", "k.mem", "k.human"}
 
 
@@ -170,7 +170,7 @@ def test_i18n_mode_splits_packs_and_orders_them(instance_dir, mixed_ws):
     fix = read_zip(instance_dir / "resourcepacks" / FIX_FILE)
     assert set(json.loads(fill["assets/a/lang/zh_cn.json"])) == {"k.llm", "k.mem"}
     assert set(json.loads(fix["assets/a/lang/zh_cn.json"])) == {"k.human"}
-    assert not (instance_dir / "resourcepacks" / "mctrans-zh_cn.zip").exists()
+    assert not (instance_dir / "resourcepacks" / "maikuai-zh_cn.zip").exists()
     packs = read_packs((instance_dir / "options.txt").read_text(encoding="utf-8"))
     assert packs == ["vanilla", "file/other.zip", f"file/{FILL_FILE}", i18n_pack_id("1.20.1"), f"file/{FIX_FILE}"]
     restore(instance_dir)
@@ -226,8 +226,8 @@ def test_apply_legacy_version(instance_dir, ws):
     (instance_dir / "options.txt").write_text("lang:en_us\n", encoding="utf-8")
     apply(instance_dir, ws, "1.12.2", set_lang=True)
     text = (instance_dir / "options.txt").read_text(encoding="utf-8")
-    assert read_packs(text) == ["mctrans-zh_cn.zip"] and "lang:zh_cn" in text
-    files = read_zip(instance_dir / "resourcepacks" / "mctrans-zh_cn.zip")
+    assert read_packs(text) == ["maikuai-zh_cn.zip"] and "lang:zh_cn" in text
+    files = read_zip(instance_dir / "resourcepacks" / "maikuai-zh_cn.zip")
     assert json.loads(files["pack.mcmeta"])["pack"]["pack_format"] == 3
     restore(instance_dir)
     assert read_packs((instance_dir / "options.txt").read_text(encoding="utf-8")) == []
