@@ -196,6 +196,21 @@ def _provider(settings: Settings, name: str | None) -> ProviderConfig:
         raise ServiceError(str(exc)) from exc
 
 
+def provider_problem(name: str | None = None) -> str | None:
+    """翻译服务是否可用（配置能读取、API Key 已填写）；可用时返回 None，否则返回给用户看的原因。"""
+    try:
+        settings = load_settings()
+        settings.provider(name).resolve_api_key()
+    except ConfigError as exc:
+        return str(exc)
+    return None
+
+
+def data_dir() -> Path:
+    """全局数据目录：配置、翻译记忆库、CFPA 缓存、术语表、整合包列表。"""
+    return home_dir()
+
+
 def _select(ws: Workspace, only, limit, ids) -> list[Entry]:
     entries = ws.pending_entries()
     if ids is not None:

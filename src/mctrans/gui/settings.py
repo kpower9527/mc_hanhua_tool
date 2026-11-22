@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import copy
 
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox, QFormLayout, QHBoxLayout, QHeaderView, QInputDialog,
     QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
@@ -18,6 +20,10 @@ from ..translate.glossary import load_user_glossary
 from .worker import TaskRunner
 
 PROVIDER_LABELS = {"deepseek": "DeepSeek", "qwen": "通义千问（阿里云百炼）"}
+KEY_LINKS = {
+    "qwen": ("阿里云百炼控制台", "https://bailian.console.aliyun.com/?tab=model#/api-key"),
+    "deepseek": ("DeepSeek 开放平台", "https://platform.deepseek.com/api_keys"),
+}
 RULES_TEMPLATE = """# 配置文本规则示例（删除行首的 # 启用）：
 # [[rule]]
 # glob = "config/loadingtips/*.txt"      # 相对实例目录的文件匹配
@@ -57,6 +63,11 @@ class SettingsDialog(QDialog):
         layout.addWidget(tabs)
         layout.addWidget(buttons)
 
+    def _open_data_dir(self) -> None:
+        path = service.data_dir()
+        path.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
     # ---- 翻译服务 ----
     def _provider_tab(self) -> QWidget:
         page = QWidget()
@@ -72,6 +83,8 @@ class SettingsDialog(QDialog):
         self.api_key.setEchoMode(QLineEdit.Password)
         self.api_key.setPlaceholderText("留空则读取环境变量")
         self.key_env_label = QLabel()
+        self.key_link = QLabel()
+        self.key_link.setOpenExternalLinks(True)
         self.price_in = QDoubleSpinBox()
         self.price_out = QDoubleSpinBox()
         for box in (self.price_in, self.price_out):
@@ -95,6 +108,7 @@ class SettingsDialog(QDialog):
         form.addRow("模型名称", self.model_edit)
         form.addRow("API Key", self.api_key)
         form.addRow("", self.key_env_label)
+        form.addRow("", self.key_link)
         form.addRow("输入单价", self.price_in)
         form.addRow("输出单价", self.price_out)
         form.addRow("", self.thinking)
@@ -108,6 +122,15 @@ class SettingsDialog(QDialog):
         layout.addLayout(test_row)
         layout.addWidget(QLabel("单价仅用于费用预估，以服务商官网为准。"))
         layout.addStretch(1)
+        data_row = QHBoxLayout()
+        data_label = QLabel(f"数据目录：{service.data_dir()}（配置、翻译记忆库、CFPA 缓存、术语表）")
+        data_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        data_label.setWordWrap(True)
+        open_data = QPushButton("打开")
+        open_data.clicked.connect(self._open_data_dir)
+        data_row.addWidget(data_label, 1)
+        data_row.addWidget(open_data)
+        layout.addLayout(data_row)
         self._switch_provider()
         return page
 
@@ -142,6 +165,8 @@ class SettingsDialog(QDialog):
         self.model_edit.setText(p.model)
         self.api_key.setText(p.api_key)
         self.key_env_label.setText(f"未填写时读取环境变量 {p.api_key_env}" if p.api_key_env else "")
+        link = KEY_LINKS.get(name)
+        self.key_link.setText(f'<a href="{link[1]}">在{link[0]}获取 API Key</a>' if link else "")
         self.price_in.setValue(p.price_input)
         self.price_out.setValue(p.price_output)
         self.thinking.setChecked(p.enable_thinking)

@@ -104,3 +104,15 @@ def test_load_instance_unknown_version(tmp_path):
     (tmp_path / "mods").mkdir()
     with pytest.raises(InstanceError, match="--mc-version"):
         load_instance(tmp_path)
+
+
+def test_find_instance_dirs(tmp_path):
+    from mctrans.instances import find_instance_dirs
+    for name in ("A", "B"):
+        (tmp_path / ".minecraft" / "versions" / name / "mods").mkdir(parents=True)
+    (tmp_path / ".minecraft" / "versions" / "vanilla").mkdir()
+    mc = tmp_path / ".minecraft"
+    assert [d.name for d in find_instance_dirs(mc)] == ["A", "B"]
+    assert [d.name for d in find_instance_dirs(tmp_path)] == ["A", "B"]
+    assert find_instance_dirs(mc / "versions" / "A") == [mc / "versions" / "A"]
+    assert find_instance_dirs(mc / "versions" / "vanilla") == []

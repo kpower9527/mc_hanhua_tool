@@ -11,17 +11,20 @@ from PySide6.QtWidgets import (
 
 from .. import __version__, service
 from ..instance import InstanceError, detect_mc_version
-from ..instances import add_instance, find_instance, load_instances, remove_instance
+from ..instances import add_instance, find_instance, find_instance_dirs, load_instances, remove_instance
 from .overview import OverviewPage
 from .review import ReviewPage
 from .settings import SettingsDialog
+from .style import STYLE
 from .worker import TaskRunner
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"mctrans 整合包汉化工具 {__version__}")
+        self.base_title = f"mctrans 整合包汉化工具 {__version__}"
+        self.setWindowTitle(self.base_title)
+        self.setStyleSheet(STYLE)
         self.resize(1200, 780)
         self.runner = TaskRunner(self)
         self.ask = True  # 测试中设为 False
@@ -29,6 +32,7 @@ class MainWindow(QMainWindow):
         self.instance_list = QListWidget()
         self.instance_list.currentItemChanged.connect(self._on_select)
         add_button = QPushButton("添加整合包…")
+        add_button.setToolTip("选择整合包目录（包含 mods 文件夹）；选 .minecraft 时会列出其中版本隔离的整合包")
         add_button.clicked.connect(self._choose_instance)
         remove_button = QPushButton("从列表移除")
         remove_button.clicked.connect(self._remove_current)
@@ -60,6 +64,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("就绪")
 
         self.overview.task_done.connect(self._on_task_done)
+        self.overview.settings_requested.connect(self.open_settings)
+        self.overview.add_requested.connect(self._choose_instance)
+        self.runner.progress.connect(self._on_progress)
         self.review.apply_requested.connect(self._apply_from_review)
         self.review.retranslate_requested.connect(self._retranslate)
         self.review.message.connect(lambda text, level: self.statusBar().showMessage(text, 8000))
@@ -102,15 +109,27 @@ class MainWindow(QMainWindow):
             item.setText(self._item_text(path, Path(path).name))
 
     def _choose_instance(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "选择整合包实例目录（包含 mods 文件夹的那一层）")
+        path = QFileDialog.getExistingDirectory(self, "选择整合包目录（包含 mods 文件夹的那一层，或者 .minecraft）")
         if path:
             self.add_instance_path(path)
 
     def add_instance_path(self, path: str | Path, mc_version: str = "") -> bool:
         root = Path(path).resolve()
         if not (root / "mods").is_dir():
-            self._warn("不是整合包目录", f"{root} 下没有 mods 文件夹。\n请选择包含 mods、config 文件夹的那一层目录。")
-            return False
+            found = find_instance_dirs(root)
+            if not found:
+                self._warn("不是整合包目录", f"{root} 下没有 mods 文件夹，也没有找到版本隔离的整合包。\n"
+                                         "请选择包含 mods、config 文件夹的那一层目录。")
+                return False
+            if len(found) == 1 or not self.ask:
+                root = found[0]
+            else:
+                names = [d.name for d in found]
+                name, ok = QInputDialog.getItem(self, "选择整合包", f"在 {root} 中找到 {len(found)} 个整合包，"
+                                                "请选择要添加的一个：", names, 0, False)
+                if not ok:
+                    return False
+                root = found[names.index(name)]
         if not mc_version and detect_mc_version(root) is None:
             if not self.ask:
                 return False
@@ -170,7 +189,14 @@ class MainWindow(QMainWindow):
                 self._load_review()
         self.statusBar().showMessage(f"{name}完成", 8000)
 
+    def _on_progress(self, done: int, total: int) -> None:
+        # 窗口标题显示百分比：最小化或切到别的窗口时，在任务栏上也能看到进度
+        if total:
+            self.setWindowTitle(f"[{done * 100 // total}%] {self.runner.task_name} - {self.base_title}")
+
     def _on_busy(self, busy: bool) -> None:
+        if not busy:
+            self.setWindowTitle(self.base_title)
         self.instance_list.setEnabled(not busy)
         self.review.set_busy(busy)
         self.statusBar().showMessage(f"正在{self.runner.task_name}…" if busy else "就绪")
@@ -187,7 +213,7 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self)
         if dialog.exec():
             self.statusBar().showMessage("设置已保存", 5000)
-            self.overview.refresh()
+        self.overview.refresh()
 
     def _warn(self, title: str, text: str) -> None:
         if self.ask:

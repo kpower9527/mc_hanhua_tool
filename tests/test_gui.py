@@ -90,6 +90,7 @@ def pack(instance_dir, monkeypatch):
         "assets/create/lang/zh_cn.json": lang({"item.create.gear": "齿轮"}),
     })
     monkeypatch.setattr(service, "client_from_config", lambda p: FakeClient())
+    monkeypatch.setattr(service, "provider_problem", lambda name=None: None)
 
     def offline(url):
         raise OSError("测试中禁止联网")
@@ -211,3 +212,52 @@ def test_action_buttons_same_height(qtbot):
     o = window.overview
     heights = {b.minimumHeight() for b in (o.scan_button, o.translate_button, o.apply_button, o.restore_button, o.more_button)}
     assert heights == {34}
+
+
+def test_welcome_shown_without_instance(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    o = window.overview
+    assert not o.welcome.isHidden() and o.content.isHidden()
+    assert "1. 设置翻译服务" in o.welcome.step1.text() and not o.welcome.step1.text().startswith("✓")
+
+
+def test_translate_blocked_without_api_key(qtbot, pack, monkeypatch):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.ask = False
+    window.overview.ask = False
+    with qtbot.waitSignal(window.overview.task_done, timeout=20000):
+        window.add_instance_path(pack)
+    monkeypatch.setattr(service, "provider_problem", lambda name=None: "未找到 qwen 的 API Key")
+    assert window.overview.translate() is False
+    assert "API Key" in window.overview.log.toPlainText()
+
+
+def test_add_minecraft_dir_picks_isolated_version(qtbot, pack, tmp_path):
+    mc = tmp_path / ".minecraft"
+    (mc / "versions").mkdir(parents=True)
+    target = mc / "versions" / "MyPack"
+    pack.rename(target)
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.ask = False
+    window.overview.ask = False
+    with qtbot.waitSignal(window.overview.task_done, timeout=20000):
+        assert window.add_instance_path(mc)
+    assert window.current_root() == target.resolve()
+
+
+def test_task_panel_states(qtbot, pack):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.ask = False
+    window.overview.ask = False
+    with qtbot.waitSignal(window.overview.task_done, timeout=20000):
+        window.add_instance_path(pack)
+    o = window.overview
+    assert o.task_title.text() == "✓ 扫描完成" and "用时" in o.progress_label.text()
+    with qtbot.waitSignal(window.overview.task_done, timeout=20000):
+        o.translate()
+    assert o.task_title.text() == "✓ 翻译完成" and o.progress.value() == o.progress.maximum()
+    assert window.windowTitle() == window.base_title
