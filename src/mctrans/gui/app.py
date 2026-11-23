@@ -42,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     window.show()
     if smoke:
         QTimer.singleShot(1500, app.quit)
+    else:
+        QTimer.singleShot(2000, window.check_updates)  # 启动后在后台检查更新，不拖慢打开
     return app.exec()
 
 

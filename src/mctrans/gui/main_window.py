@@ -17,6 +17,7 @@ from .overview import OverviewPage
 from .review import ReviewPage
 from .settings import SettingsDialog
 from .style import STYLE
+from .updater import UpdateChecker
 from .worker import TaskRunner
 
 
@@ -86,10 +87,19 @@ class MainWindow(QMainWindow):
         self.review.message.connect(lambda text, level: self.statusBar().showMessage(text, 8000))
         self.runner.busy_changed.connect(self._on_busy)
         self._review_dirty = True
+        self.updater = UpdateChecker(self)
         self.reload_instances()
 
+    def check_updates(self, manual: bool = False) -> None:
+        """后台查询 GitHub 最新版本；自动检查时没有新版或失败都不打扰。"""
+        if self.updater.start(manual) and manual:
+            self.statusBar().showMessage("正在检查更新…", 5000)
+
     def show_about(self) -> None:
-        QMessageBox.about(self, f"关于{APP_NAME}", (
+        box = QMessageBox(self)
+        box.setWindowTitle(f"关于{APP_NAME}")
+        box.setIconPixmap(self.windowIcon().pixmap(64, 64))
+        box.setText((
             f"<h3>{APP_NAME} {__version__}</h3>"
             "<p>Minecraft 整合包一键汉化：先用 mod 自带中文、CFPA 社区汉化和翻译记忆免费补全，"
             "剩下的交给大模型翻译；支持模组语言文件、任务书、手册、KubeJS 脚本与配置文本。</p>"
@@ -98,6 +108,11 @@ class MainWindow(QMainWindow):
             "（CC BY-NC-SA 4.0）。机器翻译可能有错译，可在「审校」页修改。</p>"
             f"<p>数据目录：{service.data_dir()}</p>"
         ))
+        check = box.addButton("检查更新", QMessageBox.ActionRole)
+        box.addButton("关闭", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is check:
+            self.check_updates(manual=True)
 
     # ---- 整合包列表 ----
     def reload_instances(self, select: str | None = None) -> None:

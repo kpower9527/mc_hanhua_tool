@@ -286,3 +286,61 @@ def test_pack_order_notice(qtbot, pack):
     assert blocker.args == ["重新应用"]
     assert not o.order_notice.isVisibleTo(window)
     assert read_packs(opts.read_text(encoding="utf-8"))[-1] == "file/maikuai-zh_cn.zip"
+
+
+def _run_checker(qtbot, monkeypatch, result, manual):
+    from PySide6.QtWidgets import QWidget
+
+    from mctrans import update
+    from mctrans.gui import updater
+
+    shown = []
+    monkeypatch.setattr(updater.UpdateDialog, "exec", lambda self: shown.append(("dialog", self.info.version)))
+    monkeypatch.setattr(updater.QMessageBox, "information", lambda *a: shown.append(("info",)))
+    monkeypatch.setattr(updater.QMessageBox, "warning", lambda *a: shown.append(("warning", a[2])))
+
+    def check(current):
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    checker = updater.UpdateChecker(parent, check=check)
+    with qtbot.waitSignal(checker.finished, timeout=5000):
+        assert checker.start(manual)
+    return shown, update
+
+
+def test_update_auto_check_shows_dialog_for_newer(qtbot, monkeypatch, mctrans_home):
+    from mctrans.update import ReleaseInfo
+    shown, _ = _run_checker(qtbot, monkeypatch, ReleaseInfo("9.0.0", "u", "说明", True), manual=False)
+    assert shown == [("dialog", "9.0.0")]
+
+
+def test_update_auto_check_silent_when_latest_failed_or_skipped(qtbot, monkeypatch, mctrans_home):
+    from mctrans import update
+    from mctrans.update import ReleaseInfo
+    assert _run_checker(qtbot, monkeypatch, ReleaseInfo("0.0.1", "u", "", False), manual=False)[0] == []
+    assert _run_checker(qtbot, monkeypatch, update.UpdateError("连不上"), manual=False)[0] == []
+    update.skip_version(mctrans_home, "9.0.0")
+    assert _run_checker(qtbot, monkeypatch, ReleaseInfo("9.0.0", "u", "", True), manual=False)[0] == []
+
+
+def test_update_manual_check_always_reports(qtbot, monkeypatch, mctrans_home):
+    from mctrans import update
+    from mctrans.update import ReleaseInfo
+    assert _run_checker(qtbot, monkeypatch, ReleaseInfo("0.0.1", "u", "", False), manual=True)[0] == [("info",)]
+    shown = _run_checker(qtbot, monkeypatch, update.UpdateError("连不上"), manual=True)[0]
+    assert shown[0][0] == "warning" and "连不上" in shown[0][1]
+    update.skip_version(mctrans_home, "9.0.0")  # 手动检查不受「跳过」影响
+    assert _run_checker(qtbot, monkeypatch, ReleaseInfo("9.0.0", "u", "", True), manual=True)[0] == [("dialog", "9.0.0")]
+
+
+def test_update_dialog_skip_records_version(qtbot, mctrans_home):
+    from mctrans import update
+    from mctrans.gui.updater import UpdateDialog
+    dialog = UpdateDialog(None, update.ReleaseInfo("9.0.0", "u", "**新功能**", True))
+    qtbot.addWidget(dialog)
+    dialog.skip_button.click()
+    assert update.skipped_version(mctrans_home) == "9.0.0"
