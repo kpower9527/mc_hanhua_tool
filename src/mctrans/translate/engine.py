@@ -29,6 +29,9 @@ class EngineSettings:
     concurrency: int = 4
     requests_per_minute: int = 60
     max_retries: int = 3
+    # 单次请求的总时限（秒）。接口偶尔会挂住不返回，超过时限就放弃这次请求，把这批条目拆小重试，
+    # 不让整个任务卡在最后几条上
+    request_deadline: float = 150.0
 
     @classmethod
     def from_settings(cls, s: Settings) -> "EngineSettings":
@@ -140,60 +143,84 @@ def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settin
         return translate_batch(client, batch, group.namespace, kinds[group.handler], glossary, lenient)
 
     workers = max(1, settings.concurrency)
+    deadline = settings.request_deadline
     queue: deque[tuple[Group, list[Unit], int]] = deque(
         (g, b, 0) for g in groups for b in make_batches(g.units, settings.batch_size, settings.batch_max_chars)
     )
     in_flight: dict = {}
-    with ThreadPoolExecutor(max_workers=workers) as pool:
+    started: dict = {}
+    # 被放弃的请求还占着线程直到底层超时，线程池留出余量，免得新批次排在它们后面
+    pool = ThreadPoolExecutor(max_workers=workers * 3)
+    try:
         def submit_more() -> None:
             # 滑动窗口：同时在途的批次不超过并发数，取消后不再提交新批次
             while queue and len(in_flight) < workers and not report.cancelled:
                 g, b, attempt = queue.popleft()
                 # 最后一次尝试时放宽：只少颜色码的译文也接受（带审校备注），避免长段落整条失败
                 lenient = attempt >= settings.max_retries
-                in_flight[pool.submit(job, g, b, lenient)] = (g, b, attempt)
+                fut = pool.submit(job, g, b, lenient)
+                in_flight[fut] = (g, b, attempt)
+                started[fut] = time.monotonic()
+
+        def handle(group: Group, batch: list[Unit], attempt: int, results: list[UnitResult]) -> None:
+            report.requests += 1
+            updates: list[TranslationUpdate] = []
+            done = 0
+            retry: list[Unit] = []
+            errors: dict[str, int] = {}
+            for unit, result in zip(batch, results):
+                if result.text is not None:
+                    updates.extend(
+                        TranslationUpdate(i, result.text, "llm", "done", client.model, result.note)
+                        for i in unit.entry_ids
+                    )
+                    done += len(unit.entry_ids)
+                    continue
+                error = result.error or "未知错误"
+                errors[error] = errors.get(error, 0) + 1
+                if attempt < settings.max_retries:
+                    retry.append(unit)
+                else:
+                    updates.extend(TranslationUpdate(i, None, None, "failed", None, error) for i in unit.entry_ids)
+                    report.failed += len(unit.entry_ids)
+                    done += len(unit.entry_ids)
+            if updates:
+                ws.save_translations(updates)
+            report.translated += sum(1 for u in updates if u.status == "done")
+            if on_error and errors:
+                reason = max(errors, key=errors.get)
+                on_error(sum(errors.values()), reason, not retry)
+            if retry:
+                size = max(1, settings.batch_size // (4 ** (attempt + 1)))
+                for b in make_batches(retry, size, settings.batch_max_chars):
+                    queue.append((group, b, attempt + 1))
+            if on_progress and done:
+                on_progress(done)
 
         submit_more()
         while in_flight:
-            finished, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+            timeout = None
+            if deadline:
+                timeout = max(0.0, min(started[f] for f in in_flight) + deadline - time.monotonic())
+            finished, _ = wait(in_flight, timeout=timeout, return_when=FIRST_COMPLETED)
             for fut in finished:
                 group, batch, attempt = in_flight.pop(fut)
-                report.requests += 1
-                updates: list[TranslationUpdate] = []
-                done = 0
-                retry: list[Unit] = []
-                errors: dict[str, int] = {}
-                for unit, result in zip(batch, fut.result()):
-                    if result.text is not None:
-                        updates.extend(
-                            TranslationUpdate(i, result.text, "llm", "done", client.model, result.note)
-                            for i in unit.entry_ids
-                        )
-                        done += len(unit.entry_ids)
-                        continue
-                    error = result.error or "未知错误"
-                    errors[error] = errors.get(error, 0) + 1
-                    if attempt < settings.max_retries:
-                        retry.append(unit)
-                    else:
-                        updates.extend(TranslationUpdate(i, None, None, "failed", None, error) for i in unit.entry_ids)
-                        report.failed += len(unit.entry_ids)
-                        done += len(unit.entry_ids)
-                if updates:
-                    ws.save_translations(updates)
-                report.translated += sum(1 for u in updates if u.status == "done")
-                if on_error and errors:
-                    reason = max(errors, key=errors.get)
-                    on_error(sum(errors.values()), reason, not retry)
-                if retry:
-                    size = max(1, settings.batch_size // (4 ** (attempt + 1)))
-                    for b in make_batches(retry, size, settings.batch_max_chars):
-                        queue.append((group, b, attempt + 1))
-                if on_progress and done:
-                    on_progress(done)
+                started.pop(fut)
+                handle(group, batch, attempt, fut.result())
+            if deadline:
+                now = time.monotonic()
+                for fut in [f for f in in_flight if now - started[f] >= deadline]:
+                    # 放弃挂住的请求：它稍后返回的结果直接丢弃，这批条目按失败重试
+                    group, batch, attempt = in_flight.pop(fut)
+                    started.pop(fut)
+                    reason = f"请求超过 {deadline:g} 秒无响应"
+                    handle(group, batch, attempt, [UnitResult(None, reason) for _ in batch])
             if should_stop is not None and should_stop():
                 report.cancelled = True  # 已完成的已保存，其余条目保持待翻译
             submit_more()
+    finally:
+        # 不等被放弃的请求结束（它们会在底层超时后自行退出）
+        pool.shutdown(wait=False, cancel_futures=True)
     return report
 
 

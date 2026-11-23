@@ -189,3 +189,31 @@ def test_last_attempt_accepts_missing_colors_with_note(ws):
     assert report.translated == 1 and report.failed == 0 and len(client.calls) == 2  # 第一次严格失败，第二次放宽
     row = ws.conn.execute("SELECT t.text, t.note FROM translations t").fetchone()
     assert row["text"] == "译Use the Plough on %s" and "缺少 &6 &r" in row["note"]
+
+
+def test_hung_request_is_abandoned_and_retried(ws):
+    import threading
+    ws.sync_entries("lang_json", [e("k1", "Gear")])
+    release = threading.Event()
+    calls = {"n": 0}
+
+    def fn(text):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            release.wait(timeout=10)  # 模拟接口挂住不返回
+            return "挂"
+        return "齿轮"
+
+    errors = []
+    settings = EngineSettings(batch_size=1, batch_max_chars=6000, concurrency=1, requests_per_minute=0,
+                              max_retries=2, request_deadline=0.3)
+    start = time.monotonic()
+    report = run_translation(ws, FakeClient(fn), Glossary(), settings,
+                             on_error=lambda n, reason, final: errors.append((n, reason, final)))
+    elapsed = time.monotonic() - start
+    release.set()
+    assert elapsed < 3  # 没有一直等那个挂住的请求
+    assert report.translated == 1 and report.failed == 0
+    assert errors and "无响应" in errors[0][1] and errors[0][2] is False
+    row = ws.conn.execute("SELECT text FROM translations").fetchone()
+    assert row["text"] == "齿轮"  # 被放弃的请求晚返回的结果不会覆盖
