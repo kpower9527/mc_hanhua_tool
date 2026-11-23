@@ -217,3 +217,24 @@ def test_hung_request_is_abandoned_and_retried(ws):
     assert errors and "无响应" in errors[0][1] and errors[0][2] is False
     row = ws.conn.execute("SELECT text FROM translations").fetchone()
     assert row["text"] == "齿轮"  # 被放弃的请求晚返回的结果不会覆盖
+
+
+def test_cancel_does_not_wait_for_hung_request(ws):
+    import threading
+    ws.sync_entries("lang_json", [e("k1", "Gear")])
+    release, stop = threading.Event(), threading.Event()
+
+    def fn(text):
+        stop.set()  # 请求发出后用户点了取消
+        release.wait(timeout=10)
+        return "挂"
+
+    settings = EngineSettings(batch_size=1, batch_max_chars=6000, concurrency=1, requests_per_minute=0,
+                              max_retries=2, request_deadline=60)
+    start = time.monotonic()
+    report = run_translation(ws, FakeClient(fn), Glossary(), settings, should_stop=stop.is_set)
+    elapsed = time.monotonic() - start
+    release.set()
+    assert elapsed < 3 and report.cancelled
+    assert report.translated == 0 and report.failed == 0
+    assert len(ws.pending_entries()) == 1  # 没翻完的保持待翻译，下次继续

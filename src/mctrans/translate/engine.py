@@ -17,6 +17,7 @@ from .glossary import Glossary
 from .hints import compact_hint
 from .protect import has_translatable_text, protect
 
+STOP_POLL_SECONDS = 0.3  # 等待请求时多久检查一次「取消」
 PROMPT_OVERHEAD_TOKENS = 450  # 系统提示词 + 术语表的大致开销
 CHARS_PER_TOKEN = 3.5
 OUTPUT_RATIO = 1.3
@@ -199,9 +200,10 @@ def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settin
 
         submit_more()
         while in_flight:
-            timeout = None
+            # 定期醒来检查取消，不能只在请求返回时才看（请求挂住时取消会没反应）
+            timeout = STOP_POLL_SECONDS
             if deadline:
-                timeout = max(0.0, min(started[f] for f in in_flight) + deadline - time.monotonic())
+                timeout = min(timeout, max(0.0, min(started[f] for f in in_flight) + deadline - time.monotonic()))
             finished, _ = wait(in_flight, timeout=timeout, return_when=FIRST_COMPLETED)
             for fut in finished:
                 group, batch, attempt = in_flight.pop(fut)
@@ -217,6 +219,7 @@ def run_translation(ws: Workspace, client: LLMClient, glossary: Glossary, settin
                     handle(group, batch, attempt, [UnitResult(None, reason) for _ in batch])
             if should_stop is not None and should_stop():
                 report.cancelled = True  # 已完成的已保存，其余条目保持待翻译
+                in_flight.clear()  # 不等还在途的请求，它们的结果丢弃，条目保持待翻译
             submit_more()
     finally:
         # 不等被放弃的请求结束（它们会在底层超时后自行退出）

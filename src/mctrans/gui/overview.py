@@ -208,7 +208,7 @@ class OverviewPage(QWidget):
         self.progress_label = QLabel()
         self.cancel_button = QPushButton("取消")
         self.cancel_button.setMinimumWidth(80)
-        self.cancel_button.clicked.connect(self.runner.cancel)
+        self.cancel_button.clicked.connect(self._cancel_task)
         panel = QGridLayout(self.task_panel)
         panel.setContentsMargins(12, 10, 12, 10)
         panel.addWidget(self.task_title, 0, 0)
@@ -376,6 +376,11 @@ class OverviewPage(QWidget):
         if self.runner.task_name == "翻译" and self._done and self._total > self._done:
             parts.append(f"预计剩余 {self._fmt(elapsed / self._done * (self._total - self._done))}")
         self.progress_label.setText(" · ".join(parts))
+
+    def _cancel_task(self) -> None:
+        self.runner.cancel()
+        self.cancel_button.setEnabled(False)
+        self.task_title.setText("正在取消…")
 
     def _set_task(self, title: str, state: str) -> None:
         self.task_title.setText(title)
