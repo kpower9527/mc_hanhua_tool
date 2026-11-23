@@ -78,3 +78,36 @@ def test_restore_allow_cosmetic_mismatch():
     # 字面量换行（反斜杠 + n）缺少：外观问题，接受
     n = protect("Line one\\n\\nLine two")
     assert restore("第一行第二行", n, allow_cosmetic_mismatch=True) == "第一行第二行"
+
+
+@pytest.mark.parametrize("closing", ["⟝", "⟛", "〛", "】", "]"])
+def test_restore_accepts_lookalike_closing_bracket(closing):
+    # 回归测试：qwen 等模型常把 ⟧（U+27E7）写成形近的 ⟝（U+27DD）等，位置其实是对的
+    m = protect("The $(9)Coercion Deriver$() works")
+    assert restore(f"⟦0{closing}强制力发生器⟦1⟧可以工作", m) == "$(9)强制力发生器$()可以工作"
+
+
+def test_restore_accepts_spaces_and_lookalike_opening_bracket():
+    m = protect("Hello %s and %d")
+    assert restore("你好 ⟦ 0 ⟧ 和 〚1⟧", m) == "你好 %s 和 %d"
+
+
+def test_lookalike_tokens_count_in_mismatch_check():
+    m = protect("Hello %s")
+    with pytest.raises(TokenMismatch):
+        restore("你好 ⟦0⟝ ⟦0⟧", m)
+
+
+def test_restore_allow_patchouli_format_macro_mismatch():
+    m = protect("The $(l:mffs:fortron)Fortron$() and $(9)Deriver$()$(br2)Press $(k:jump)")
+    # 链接、颜色、换段宏多出或缺少：只影响排版，宽松模式接受
+    out = restore("⟦0⟧富特隆⟦1⟧和⟦0⟧发生器⟦1⟧⟦4⟧按 ⟦5⟧", m, allow_cosmetic_mismatch=True)
+    assert out == "$(l:mffs:fortron)富特隆$()和$(l:mffs:fortron)发生器$()$(br2)按 $(k:jump)"
+    with pytest.raises(TokenMismatch):
+        restore("⟦0⟧富特隆⟦1⟧和⟦0⟧发生器⟦1⟧⟦4⟧按 ⟦5⟧", m)
+    # 按键名、玩家名会显示成文字：缺少时宽松模式也拒绝
+    with pytest.raises(TokenMismatch):
+        restore("⟦0⟧富特隆⟦1⟧和⟦2⟧发生器⟦3⟧⟦4⟧按跳跃", m, allow_cosmetic_mismatch=True)
+    p = protect("Hello $(playername)!")
+    with pytest.raises(TokenMismatch):
+        restore("你好！", p, allow_cosmetic_mismatch=True)

@@ -5,7 +5,9 @@ from collections import Counter
 from dataclasses import dataclass
 
 TOKEN_FMT = "⟦{}⟧"
-TOKEN_RE = re.compile(r"⟦(\d+)⟧")
+# 识别模型返回的占位符时放宽括号：qwen 等模型常把 ⟧（U+27E7）写成形近的 ⟝（U+27DD），
+# 尤其占位符后紧跟中文时，位置其实是对的。这些写法都当作占位符，还原时统一替换
+TOKEN_RE = re.compile(r"[⟦〚]\s*(\d+)\s*[⟧⟝⟛〛】\]]")
 
 _FORMAT_PATTERNS = [
     r"§[0-9a-fk-orA-FK-OR]",                       # 颜色/样式码
@@ -43,8 +45,10 @@ def protect(text: str, glyphs: bool = False) -> Masked:
     return Masked((PROTECT_GLYPHS_RE if glyphs else PROTECT_RE).sub(repl, text), tokens)
 
 
-# 只影响外观的格式码：颜色/样式码与换行。缺少或多出只会让颜色、分段不完全一致，不会出错
-COSMETIC_RE = re.compile(r"^(?:§.|&[0-9a-fk-or]|\\n|\n)$")
+# 只影响外观的格式码：颜色/样式码、换行，以及 Patchouli 的排版宏（链接、颜色、换段等）。
+# 缺少或多出只会让颜色、分段、链接不完全一致，不会出错。
+# 例外：$(k:按键) 和 $(playername) 会显示成文字，丢了就缺内容，必须一致
+COSMETIC_RE = re.compile(r"^(?:§.|&[0-9a-fk-or]|\\n|\n|\$\((?!k:|playername\))[^)]*\))$")
 
 
 def _is_cosmetic(masked: Masked, index: str) -> bool:
