@@ -5,6 +5,9 @@ from collections import Counter
 from dataclasses import dataclass
 
 TOKEN_FMT = "⟦{}⟧"
+VAULT_COLOR = (r"<(?:#[0-9a-fA-F]{6}|black|dark_blue|dark_green|dark_aqua|dark_red|dark_purple|gold|gray|"
+               r"dark_gray|blue|green|aqua|red|light_purple|yellow|white|reset|bold|italic|underlined|"
+               r"strikethrough|obfuscated)>")
 # 识别模型返回的占位符时放宽括号：qwen 等模型常把 ⟧（U+27E7）写成形近的 ⟝（U+27DD），
 # 尤其占位符后紧跟中文时，位置其实是对的。这些写法都当作占位符，还原时统一替换
 TOKEN_RE = re.compile(r"[⟦〚]\s*(\d+)\s*[⟧⟝⟛〛】\]]")
@@ -15,6 +18,8 @@ _FORMAT_PATTERNS = [
     r"%(?:\d+\$)?[-#+0,(]*\d*(?:\.\d+)?[a-zA-Z%]", # printf 参数
     r"\{[^{}\n]*\}",                               # {0} {player} {@pagebreak} {image:...}
     r"\$\([^)]*\)",                                # Patchouli 宏
+    r"</?s\d+>",                                   # 富文本片段标记（Vault Hunters 处理器生成）
+    VAULT_COLOR,                                    # Vault Hunters 颜色标签 <gray> <#22fc25>
     r"\\n",                                        # 字面量 \n（反斜杠 + n）
     r"\n",                                         # 真实换行
 ]
@@ -48,7 +53,7 @@ def protect(text: str, glyphs: bool = False) -> Masked:
 # 只影响外观的格式码：颜色/样式码、换行，以及 Patchouli 的排版宏（链接、颜色、换段等）。
 # 缺少或多出只会让颜色、分段、链接不完全一致，不会出错。
 # 例外：$(k:按键) 和 $(playername) 会显示成文字，丢了就缺内容，必须一致
-COSMETIC_RE = re.compile(r"^(?:§.|&[0-9a-fk-or]|\\n|\n|\$\((?!k:|playername\))[^)]*\))$")
+COSMETIC_RE = re.compile(r"^(?:§.|&[0-9a-fk-or]|\\n|\n|\$\((?!k:|playername\))[^)]*\)|" + VAULT_COLOR + ")$")
 
 
 def _is_cosmetic(masked: Masked, index: str) -> bool:

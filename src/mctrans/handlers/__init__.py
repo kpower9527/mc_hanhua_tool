@@ -8,13 +8,15 @@ from .lang_json import LangJsonHandler
 from .patchouli import PatchouliHandler
 from .scripts import CraftTweakerHandler, KubeJsHandler
 from .structures import StructureTextHandler
+from .vaulthunters import VaultHuntersHandler
 
 __all__ = ["Handler", "OutputSink", "all_handlers", "get_handler"]
 
 
 def all_handlers() -> list[Handler]:
     return [LangJsonHandler(), FtbQuestsHandler(), PatchouliHandler(), BetterQuestingHandler(),
-            KubeJsHandler(), CraftTweakerHandler(), StructureTextHandler(), ConfigTextHandler()]
+            KubeJsHandler(), CraftTweakerHandler(), StructureTextHandler(), VaultHuntersHandler(),
+            ConfigTextHandler()]
 
 
 def get_handler(name: str) -> Handler:

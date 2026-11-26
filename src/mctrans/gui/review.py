@@ -16,7 +16,8 @@ from ..store import ReviewRow
 
 HANDLER_LABELS = {
     "lang_json": "语言文件", "ftbquests": "FTB 任务书", "patchouli": "Patchouli 手册", "betterquesting": "BQ 任务书",
-    "kubejs": "KubeJS 脚本", "crafttweaker": "CraftTweaker", "structures": "建筑模板", "config_text": "配置文本",
+    "kubejs": "KubeJS 脚本", "crafttweaker": "CraftTweaker", "structures": "建筑模板",
+    "vaulthunters": "Vault Hunters", "config_text": "配置文本",
 }
 STATUS_LABELS = {"pending": "待翻译", "done": "已完成", "failed": "失败", "confirmed": "已确认", "skipped": "无需翻译"}
 STATUS_FILTERS = ["需审校", "待翻译", "失败", "已完成", "已确认", "全部"]

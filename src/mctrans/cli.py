@@ -37,7 +37,7 @@ InstanceArg = Annotated[
 ProviderOpt = Annotated[Optional[str], typer.Option("--provider", "-p", help="翻译服务：deepseek / qwen / 自定义")]
 ModeOpt = Annotated[str, typer.Option("--mode", help="输出模式：auto / standalone / i18nupdate")]
 OnlyOpt = Annotated[Optional[list[str]], typer.Option(
-    "--only", help="只翻译指定类别，可重复：lang_json / ftbquests / patchouli / betterquesting / kubejs / crafttweaker / structures / config_text")]
+    "--only", help="只翻译指定类别，可重复：lang_json / ftbquests / patchouli / betterquesting / kubejs / crafttweaker / structures / vaulthunters / config_text")]
 LimitOpt = Annotated[Optional[int], typer.Option("--limit", help="最多翻译多少条（抽样试翻、控制费用）")]
 
 
